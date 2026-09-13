@@ -21,7 +21,14 @@
  *
  * Full steps: see README.md at the root of this repository.
  */
-window.FIREBASE_CONFIG = null;
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB7tE4RwcQgmAIIxdyISjQwbamEDmts_hQ",
+  authDomain: "crsc-8fec4.firebaseapp.com",
+  projectId: "crsc-8fec4",
+  storageBucket: "crsc-8fec4.firebasestorage.app",
+  messagingSenderId: "261800380925",
+  appId: "1:261800380925:web:b03e3046949d1aacd4b194",
+};
 
 /*
  * Club mailer — powers the automatic emails (sign-up confirmations, 24h
