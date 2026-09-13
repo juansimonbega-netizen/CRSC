@@ -75,6 +75,8 @@ const STRINGS = {
   lateFee: ['incl. late fee', 'incl. frais de retard'],
   lateFeeAmountLbl: ['Late fee amount ($)', 'Montant des frais de retard ($)'],
 
+  pastHidden: ['That Saturday is over. Past games are kept as the club\'s record and only execs can open them.', 'Ce samedi est termin\u00e9. Les parties pass\u00e9es sont conserv\u00e9es comme archive du club et seuls les execs peuvent les ouvrir.'],
+
   /* connection state */
   offlineBanner: ['Not connected to the club\'s shared list. Anything you change here stays on this device \u2014 other execs will not see it.', 'Pas connect\u00e9 \u00e0 la liste partag\u00e9e du club. Vos changements restent sur cet appareil \u2014 les autres execs ne les verront pas.'],
   connecting: ['Connecting\u2026', 'Connexion\u2026'],

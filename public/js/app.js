@@ -701,8 +701,9 @@ function render() {
   if (!getProfile()) { renderWelcome(); return; }
   if (r.view === 'event') {
     const ev = state.events.find(e => e.id === r.eventId);
-    if (ev) { store.watchEvent(ev.id); renderEvent(ev); }
-    else $('#view').innerHTML = `<div class="empty">${esc(t('notFound'))} <a href="#/">${esc(t('backHome'))}</a></div>`;
+    const hidden = ev && isPastEvent(ev) && !isExec();
+    if (ev && !hidden) { store.watchEvent(ev.id); renderEvent(ev); }
+    else $('#view').innerHTML = `<div class="empty">${esc(hidden ? t('pastHidden') : t('notFound'))} <a href="#/">${esc(t('backHome'))}</a></div>`;
   } else {
     renderHome();
   }
@@ -789,8 +790,16 @@ function calDayState(ev) {
 
 function renderCalendar() {
   const end = state.settings.seasonEnd || nextSaturday(12);
+  const exec = isExec();
   const byDate = {};
-  for (const ev of state.events) if (ev.date) byDate[ev.date] = ev;
+  // A finished Saturday becomes the club's record of that night — who played,
+  // who paid, who was checked in, who took their name off. Players see only
+  // the weeks still to come; execs keep every past week.
+  for (const ev of state.events) {
+    if (!ev.date) continue;
+    if (isPastEvent(ev) && !exec) continue;
+    byDate[ev.date] = ev;
+  }
 
   const startM = new Date(); startM.setDate(1);
   const endM = new Date(end + 'T12:00:00');
