@@ -73,15 +73,21 @@ Everything updates **live** — all execs and players see the same lists in real
      [`public/firebase-config.js`](public/firebase-config.js) as
      `window.FIREBASE_CONFIG = { ... };`
 
-4. **Deploy the security rules and the site**
-   ```bash
-   npm install -g firebase-tools
-   firebase login
-   firebase use <your-project-id>
-   firebase deploy
-   ```
-   Your app is now at `https://<your-project-id>.web.app` — put that link in the
-   club's linktr.ee and Instagram bio.
+4. **Publish the security rules and the site** — no command line needed
+   - Rules: in the Firebase console open *Firestore Database → Rules*, paste the
+     contents of [`firestore.rules`](firestore.rules) over what is there, and
+     click **Publish**.
+   - Site: in the GitHub repo open *Settings → Pages* and set *Source* to
+     **GitHub Actions**. [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+     then publishes `public/` on every push, so later changes go live on their own,
+     about a minute after they are pushed.
+   - The club's app is then at
+     `https://juansimonbega-netizen.github.io/CRSC-/` — put that link in the
+     linktr.ee and Instagram bio.
+
+   (The Firebase CLI — `npm install -g firebase-tools`, `firebase deploy` — is an
+   alternative if you would rather host on Firebase, but it is not needed and not
+   how this club runs it.)
 
 5. **First run**
    - Open the site, tap **Exec**, enter the default PIN `1234`.
