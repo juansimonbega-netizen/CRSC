@@ -70,6 +70,15 @@ const STRINGS = {
   dismissedToast: ['Payment dismissed', 'Virement ignoré'],
   noUnpaidHere: ['No unpaid players on this event', 'Aucun joueur impayé pour cet événement'],
 
+  // Automatic e-transfer matching
+  transferNote: ['Message: {note}', 'Message : {note}'],
+  autoMatchedToast: ['{names} marked paid automatically ({amount})', '{names} marqué payé automatiquement ({amount})'],
+  autoMatchedTitle: ['Matched automatically ({n})', 'Associés automatiquement ({n})'],
+  autoFrom: ['e-transfer from {sender}', 'virement de {sender}'],
+  autoMatchNote: ['These e-transfers matched a name on the list and the exact amount owed, so they were marked paid on their own. Anything the club could not be sure of is left above for you to confirm. Use \u21ba to undo.', 'Ces virements correspondaient à un nom de la liste et au montant exact dû : ils ont été marqués payés automatiquement. Tout ce qui restait incertain est laissé ci-dessus à confirmer. Utilisez \u21ba pour annuler.'],
+  autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
+  undo: ['Undo', 'Annuler'],
+
   /* cancellation lock + late fee */
   cancelLocked: ['Cancellations are closed for this event — message an exec if you can\'t make it.', 'Les annulations sont fermées pour cet événement — écrivez à un exec si vous ne pouvez pas venir.'],
   lateFee: ['incl. late fee', 'incl. frais de retard'],

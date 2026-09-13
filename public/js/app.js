@@ -3,6 +3,7 @@ import {
 } from './store.js';
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
 import { promotionCandidate, sendMail, mailerConfigured, reminderDue } from './notify.js';
+import { resolvePayment, nameHits } from './automatch.js';
 
 /* ================================================================== */
 /* Small utilities                                                     */
@@ -1722,18 +1723,79 @@ function openPlayersModal() {
 }
 
 /* ================================================================== */
+/* Automatic e-transfer matching                                       */
+/* ================================================================== */
+
+/*
+ * Which weeks a received transfer could be paying for. Money shows up late
+ * (someone sends it Sunday morning) and early (the pass-holder who pays on
+ * sight), so the search reaches either side of today rather than assuming
+ * the transfer belongs to tonight's game.
+ */
+function matchableEvents() {
+  const day = 86400000;
+  const now = Date.now();
+  return state.events.filter(ev => {
+    if (!ev.date || ev.status !== 'open') return false;
+    const at = new Date(ev.date + 'T12:00:00').getTime();
+    return at > now - 30 * day && at < now + 14 * day;
+  });
+}
+
+function unpaidFor(ev) {
+  return personTotals(ev).filter(p => !p.paid && p.total > 0);
+}
+
+/*
+ * Mark people paid for the transfers that speak for themselves.
+ *
+ * Runs on any exec's device whenever the data changes — the Gmail script
+ * writes a payment row, every open app sees it within seconds. Two execs
+ * doing this at once write the same answer, so no coordination is needed.
+ *
+ * A transfer is only applied when exactly one week reconciles: a $20 sender
+ * who owes $20 this Saturday AND $20 last Saturday is a question for a human,
+ * not a coin flip.
+ */
+async function runAutoMatch() {
+  if (!isExec()) return;
+  // `noAuto` is an exec having undone this one by hand. The matcher does not
+  // get to argue: a transfer a human took back stays back, and waits for them
+  // on the review list instead.
+  const pending = (state.payments || []).filter(p => !p.matched && !p.noAuto);
+  if (!pending.length) return;
+  const events = matchableEvents();
+  if (!events.length) return;
+
+  for (const pay of pending) {
+    const hits = [];
+    for (const ev of events) {
+      const res = resolvePayment(pay, unpaidFor(ev));
+      if (res.status === 'matched') hits.push({ ev, people: res.people });
+    }
+    if (hits.length !== 1) continue;   // nothing certain, or certain twice over
+    const { ev, people } = hits[0];
+    const names = people.map(p => p.name).join(', ');
+    await Promise.all(people.flatMap(p => p.signups.map(su =>
+      store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now(), paidVia: 'auto' }))));
+    await store.updatePayment(pay.id, {
+      matched: true, matchedTo: names, matchedEvent: ev.id,
+      auto: true, matchedAt: Date.now(),
+    });
+    toast(t('autoMatchedToast', { names, amount: fmtMoney(pay.amount || 0) }));
+  }
+}
+
+/* ================================================================== */
 /* Exec: payments summary + CSV                                        */
 /* ================================================================== */
 
-/* Best guess for which unpaid player an e-transfer sender is. */
-function suggestMatch(sender, unpaid) {
-  const tokens = sender.toLowerCase().split(/\s+/).filter(Boolean);
+/* Best guess for which unpaid player a transfer the matcher left behind is
+ * for — the same name reading as the automatic pass, minus the certainty. */
+function suggestMatch(pay, unpaid) {
+  const hits = nameHits((pay.sender || '') + ' ' + (pay.message || ''), unpaid);
   let best = null; let bestScore = 0;
-  for (const p of unpaid) {
-    const words = (p.name || '').toLowerCase().split(/\s+/);
-    const score = words.filter(w => tokens.includes(w)).length;
-    if (score > bestScore) { best = p; bestScore = score; }
-  }
+  for (const h of hits) if (h.score > bestScore) { best = h.person; bestScore = h.score; }
   return best;
 }
 
@@ -1756,13 +1818,14 @@ function openSummaryModal(ev) {
         <h3 class="section-sub">${esc(t('moneyReceived'))}</h3>
         <div class="summary-list">
           ${pays.map(pay => {
-            const sug = suggestMatch(pay.sender || '', unpaid);
+            const sug = suggestMatch(pay, unpaid);
             return `
             <div class="pay-match" data-pay="${esc(pay.id)}">
               <div class="row gap center">
                 <strong class="grow">${esc(pay.sender || '?')}</strong>
                 <span class="pay-amt">${fmtMoney(pay.amount || 0)}</span>
               </div>
+              ${pay.message ? `<p class="pay-note">${esc(t('transferNote', { note: pay.message }))}</p>` : ''}
               <div class="row gap">
                 ${unpaid.length ? `
                   <select class="input grow" data-match-sel>
@@ -1774,6 +1837,26 @@ function openSummaryModal(ev) {
             </div>`;
           }).join('')}
         </div>` : ''}
+      ${(() => {
+        const autos = (state.payments || [])
+          .filter(p => p.auto && p.matchedEvent === ev.id)
+          .sort((a, b) => (b.matchedAt || 0) - (a.matchedAt || 0));
+        if (!autos.length) return '';
+        return `
+        <h3 class="section-sub">${esc(t('autoMatchedTitle', { n: autos.length }))}</h3>
+        <div class="summary-list">
+          ${autos.map(p => `
+            <div class="entry" data-auto="${esc(p.id)}">
+              <div class="grow entry-name">
+                <span>${esc(p.matchedTo || '')}</span>
+                <small>${esc(t('autoFrom', { sender: p.sender || '?' }))}${p.message ? ' · ' + esc(p.message) : ''}</small>
+              </div>
+              <span class="chip chip-paid">${fmtMoney(p.amount || 0)} \u2713</span>
+              <button class="btn btn-small btn-ghost" data-auto-undo title="${esc(t('undo'))}">\u21ba</button>
+            </div>`).join('')}
+        </div>
+        <p class="hint">${esc(t('autoMatchNote'))}</p>`;
+      })()}
       ${unpaid.length ? `
         <h3 class="section-sub">${esc(t('notPaidYet', { n: unpaid.length }))}</h3>
         <div class="summary-list">
@@ -1826,6 +1909,24 @@ function openSummaryModal(ev) {
       await store.updatePayment(pay.id, { matched: true, matchedTo: '' });
       toast(t('dismissedToast'));
       row.remove();
+    });
+  });
+
+  // Undo an automatic match: the transfer goes back to the review list above
+  // and only the spots the matcher marked are cleared, never a cash payment
+  // or a tick an exec made by hand.
+  $$('[data-auto]', ov).forEach(row => {
+    const pay = (state.payments || []).find(p => p.id === row.dataset.auto);
+    $('[data-auto-undo]', row).addEventListener('click', async () => {
+      const names = (pay.matchedTo || '').split(',').map(n => n.trim()).filter(Boolean);
+      const targets = people.filter(p => names.includes(p.name));
+      await Promise.all(targets.flatMap(p => p.signups
+        .filter(su => su.paidVia === 'auto')
+        .map(su => store.updateSignup(ev.id, su.id, { paid: false, paidVia: '' }))));
+      await store.updatePayment(pay.id, { matched: false, matchedTo: '', auto: false, noAuto: true });
+      toast(t('autoUndone', { names: pay.matchedTo || '' }), 'warn');
+      ov.remove();
+      openSummaryModal(state.events.find(e => e.id === ev.id) || ev);
     });
   });
 }
@@ -2041,6 +2142,7 @@ function openSettingsModal() {
 /* ================================================================== */
 
 let reminderTimer = null;
+let matchTimer = null;
 
 async function main() {
   document.documentElement.lang = getLang();
@@ -2060,6 +2162,9 @@ async function main() {
     // Check for due payment reminders shortly after data settles.
     clearTimeout(reminderTimer);
     reminderTimer = setTimeout(runPaymentReminders, 1500);
+    // Received e-transfers land here the moment the Gmail script files them.
+    clearTimeout(matchTimer);
+    matchTimer = setTimeout(runAutoMatch, 1200);
   });
 }
 

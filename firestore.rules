@@ -33,13 +33,16 @@ service cloud.firestore {
         && (!('photo' in request.resource.data) || request.resource.data.photo.size() <= 60000);
     }
 
-    // Received e-transfers, written by the Gmail matcher script; execs
-    // mark them matched from the Payments screen.
+    // Received e-transfers, written by the Gmail matcher script. The app
+    // marks the ones that reconcile on their own; execs confirm the rest
+    // from the Payments screen. `message` is the note the sender typed —
+    // it is read for the names of people they paid for, so it is kept short.
     match /payments/{paymentId} {
       allow read: if true;
       allow create, update: if
         (!('sender' in request.resource.data) || request.resource.data.sender.size() <= 100)
-        && (!('matchedTo' in request.resource.data) || request.resource.data.matchedTo.size() <= 100);
+        && (!('message' in request.resource.data) || request.resource.data.message.size() <= 300)
+        && (!('matchedTo' in request.resource.data) || request.resource.data.matchedTo.size() <= 200);
       allow delete: if true;
     }
 

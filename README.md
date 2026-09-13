@@ -157,11 +157,38 @@ secret in both places if it's ever abused.
 
 A second Apps Script in the club Gmail ([`apps-script/payment-matcher.gs`](apps-script/payment-matcher.gs),
 setup instructions inside the file) checks every 15 minutes for Interac
-"sent you money" notification emails, extracts the sender's name and amount,
-and records them in the database. On the exec **Payments** screen they appear
-under "Received e-transfers — match to a player" with the best-guess player
-pre-selected: one tap on ✓ marks that player paid, ✕ dismisses unrelated
-transfers. The Payments button shows a count whenever transfers are waiting.
+"sent you money" notification emails and records the sender's name, the
+amount, and the message they typed with the transfer.
+
+Most of those then mark themselves paid, with no exec involved. The matching
+rules live in [`public/js/automatch.js`](public/js/automatch.js) and a
+transfer has to satisfy both before anything is marked:
+
+1. **Every name resolves to exactly one unpaid player.** Accents and
+   capitals are ignored, so `ANAIS COTE` finds Anaïs Côté. Three Omars on
+   the list and a transfer that just says `OMAR` resolves to nobody.
+2. **The money adds up to the cent.** The named players' outstanding totals
+   must equal the amount sent — Battle Pass coverage, bundles and late fees
+   included, since those are what they actually owe.
+
+This is what handles one person paying for several: the club's players
+routinely write *"for me and Marc"* in the transfer message, so the message
+is matched against the roster the same way the sender's name is. `JUAN BEGA`
+sending $16 with *"volleyball for me and Anais Cote"* marks both of them paid.
+Phrasing does not matter and neither does language — names are found by
+looking them up, not by parsing sentences.
+
+A transfer only applies when **exactly one** Saturday reconciles. Someone who
+owes $20 this week and $20 last week is a question for a human, not a guess.
+
+Everything else stays on the exec **Payments** screen under "Received
+e-transfers — match to a player", best guess pre-selected, ✓ to confirm and
+✕ to dismiss; the Payments button shows a count whenever transfers are
+waiting. Automatic matches are listed separately under "Matched
+automatically" with the sender and their message, and **↺ undoes one** — that
+puts the transfer back on the review list and permanently stops the matcher
+from claiming it again, so an exec's correction is never overwritten.
+
 (The outgoing mailer lives in [`apps-script/mailer.gs`](apps-script/mailer.gs).)
 
 ## Removal log (proof trail)

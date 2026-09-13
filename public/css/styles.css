@@ -422,6 +422,9 @@ select.input { appearance: auto; }
 .pay-match { display: flex; flex-direction: column; gap: 6px; padding: 9px 0; border-bottom: 1px solid #f0e9d9; }
 .pay-match:last-child { border-bottom: none; }
 .pay-amt { font-weight: 800; font-variant-numeric: tabular-nums; }
+/* The note the sender typed — it is what names the friends they paid for,
+ * so it stays readable rather than shrinking into the metadata. */
+.pay-note { margin: 0; font-size: 13px; color: #6b6152; overflow-wrap: anywhere; }
 
 /* event editor */
 .ee-list { border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-bottom: 8px; background: #fff; display: flex; flex-direction: column; gap: 8px; }

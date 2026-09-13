@@ -2,10 +2,13 @@
  * CRSC — automatic e-transfer matcher.
  *
  * Runs INSIDE THE CLUB GMAIL (the account that receives the e-transfers).
- * Every 15 minutes it looks for new Interac e-Transfer notification emails,
- * extracts the sender's name and the amount, and records them in the app's
- * database. They then appear on the exec Payments screen as
- * "Received e-transfers — match to a player" with a one-tap confirm.
+ * Every 15 minutes it looks for new Interac e-Transfer notification emails
+ * and records the sender's name, the amount, and the message they typed with
+ * the transfer. The app reads those rows and marks people paid on its own
+ * when the names and the money both add up — including when one person sends
+ * for a group and lists everyone in the message, which is why the message is
+ * captured and not just the amount. Anything that does not reconcile is left
+ * on the exec Payments screen to confirm by hand.
  *
  * SETUP (~5 minutes, while logged into the club Gmail):
  *  1. Go to https://script.google.com → New project → paste this file.
@@ -38,12 +41,22 @@ function checkTransfers() {
       var body = msg.getPlainBody() || '';
       var amt = body.match(/\$\s*([\d,]+(?:[.,]\d{2})?)/);
       var amount = amt ? parseFloat(amt[1].replace(',', '.').replace(/\.(?=.*\.)/g, '')) : 0;
-      record(msg.getId(), sender, amount, msg.getDate());
+      record(msg.getId(), sender, amount, message(body), msg.getDate());
     });
   });
 }
 
-function record(id, sender, amount, date) {
+/*
+ * The note the sender typed. Interac labels it "Message:" in English and
+ * "Message :" in French, sometimes with the sender's name in between. Capped
+ * well short of a paragraph — it is read for names, not stored as mail.
+ */
+function message(body) {
+  var m = body.match(/Message(?:\s+(?:from|de)\s+[^:]{0,60})?\s*:\s*(.+)/i);
+  return m ? m[1].trim().slice(0, 200) : '';
+}
+
+function record(id, sender, amount, note, date) {
   var url = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID +
     '/databases/(default)/documents/payments?documentId=' + encodeURIComponent(id) +
     '&key=' + API_KEY;
@@ -55,6 +68,7 @@ function record(id, sender, amount, date) {
       fields: {
         sender: { stringValue: sender },
         amount: { doubleValue: amount },
+        message: { stringValue: note },
         receivedAt: { integerValue: String(date.getTime()) },
         matched: { booleanValue: false },
       },
