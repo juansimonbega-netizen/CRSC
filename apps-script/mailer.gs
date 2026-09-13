@@ -12,7 +12,7 @@
  * public/firebase-config.js.
  */
 
-var SECRET = 'change-me-to-something-random';
+var SECRET = 'crsc-oa7c0il73eq6vvtw';
 
 function doPost(e) {
   var d = JSON.parse(e.postData.contents);
