@@ -2023,7 +2023,7 @@ function openSettingsModal() {
       etransferEmail: $('#cs-email', ov).value.trim(),
       location: $('#cs-location', ov).value.trim(),
       instagram: $('#cs-insta', ov).value.trim().replace(/^@/, ''),
-      execPin: $('#cs-pin', ov).value.trim() || '1234',
+      execPin: $('#cs-pin', ov).value.trim() || '1405',
       seasonEnd: $('#cs-season', ov).value || s.seasonEnd || '',
       lateFeeNote: $('#cs-latefee', ov).value.trim(),
       lateFeeAmount: parseFloat($('#cs-latefeeamt', ov).value) || 0,

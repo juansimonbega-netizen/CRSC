@@ -27,7 +27,7 @@ export const DEFAULT_SETTINGS = {
   etransferEmail: 'concordiaRSclub@gmail.com',
   instagram: 'crsc_concordia',
   location: 'Collège de Maisonneuve, 2701 rue Nicolet, H1X 1Z8, 3rd floor',
-  execPin: '1234',
+  execPin: '1405',
   seasonEnd: '2026-12-26',
   lateFeeNote: '+5$ late fee if payment is made after the event',
   lateFeeAmount: 5,
