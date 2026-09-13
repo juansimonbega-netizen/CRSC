@@ -9,11 +9,9 @@
  *
  * SETUP (~5 minutes, while logged into the club Gmail):
  *  1. Go to https://script.google.com → New project → paste this file.
- *  2. Fill in PROJECT_ID and API_KEY below (same values as the firebaseConfig
- *     in public/firebase-config.js: projectId and apiKey).
- *  3. In the toolbar pick the function `checkTransfers` and press Run once →
+ *  2. In the toolbar pick the function `checkTransfers` and press Run once →
  *     authorize Gmail access when asked.
- *  4. Left sidebar → Triggers (alarm-clock icon) → Add Trigger:
+ *  3. Left sidebar → Triggers (alarm-clock icon) → Add Trigger:
  *     function `checkTransfers` · event source "Time-driven" ·
  *     "Minutes timer" · "Every 15 minutes" → Save.
  *
@@ -24,8 +22,8 @@
  *    inbox is touched.
  */
 
-var PROJECT_ID = 'YOUR_FIREBASE_PROJECT_ID';
-var API_KEY = 'YOUR_FIREBASE_API_KEY';
+var PROJECT_ID = 'crsc-8fec4';
+var API_KEY = 'AIzaSyB7tE4RwcQgmAIIxdyISjQwbamEDmts_hQ';
 
 function checkTransfers() {
   var threads = GmailApp.search('from:(interac.ca) newer_than:3d');
