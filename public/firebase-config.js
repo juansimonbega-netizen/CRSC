@@ -52,4 +52,7 @@ window.FIREBASE_CONFIG = {
  *        secret: "the-same-secret-you-put-in-the-script",
  *      };
  */
-window.MAILER = null;
+window.MAILER = {
+  url: "https://script.google.com/macros/s/AKfycbwbxR83tS0LqJkYe0tu9HDD8QVIxjqsYFmtYz55KFZYGTgzFPaIP-Qn668Frs317uCy-A/exec",
+  secret: "crsc-oa7c0il73eq6vvtw",
+};
