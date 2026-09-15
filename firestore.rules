@@ -51,7 +51,8 @@ service cloud.firestore {
     // derived data — the app can always recompute it from the sign-ups.
     match /dues/{eventId} {
       allow read: if true;
-      allow write: if request.resource.data.date is string
+      allow delete: if true;
+      allow create, update: if request.resource.data.date is string
         && request.resource.data.date.size() <= 20;
     }
 

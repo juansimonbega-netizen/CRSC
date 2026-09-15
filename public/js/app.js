@@ -2022,7 +2022,7 @@ function unpaidFor(ev) {
  * removed. A player signing up at 2 AM refreshes it by that very act.
  */
 async function publishDues(ev) {
-  if (store.mode === 'demo' || !ev || ev.status !== 'open' || isPastEvent(ev)) return;
+  if (store.mode === 'demo' || !ev || ev.status !== 'open') return;
   const people = personTotals(ev)
     .filter(p => !p.paid && p.total > 0)
     .map(p => ({
@@ -2043,8 +2043,12 @@ let duesTimer = null;
 function scheduleDues() {
   clearTimeout(duesTimer);
   duesTimer = setTimeout(() => {
-    for (const ev of state.events) {
-      if (ev.status === 'open' && !isPastEvent(ev) && !isScheduled(ev)) publishDues(ev);
+    // Exactly the nights the matcher considers — no wider, so nothing is
+    // published that will not be kept current, and no narrower, so a stale
+    // total can never out-live the payment that settled it. Someone paying
+    // last week's game late (the club allows it until Tuesday) still settles.
+    for (const ev of matchableEvents()) {
+      if (!isScheduled(ev)) publishDues(ev);
     }
   }, 2000);
 }
