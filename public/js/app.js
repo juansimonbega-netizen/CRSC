@@ -2007,6 +2007,49 @@ function unpaidFor(ev) {
 }
 
 /*
+ * Publish what each person still owes, for the Gmail matcher to settle
+ * against while nobody has the app open.
+ *
+ * Pricing is genuinely intricate — season passes, both-slot bundles, late
+ * fees, someone who paid for volleyball and also played basketball — and it
+ * lives here, in one place. Rather than reimplement any of that inside a
+ * Google Apps Script (where it would drift out of sync the first time a
+ * price changed), the app publishes the ANSWER: a plain list of who owes
+ * what. The matcher only has to read names and add up numbers.
+ *
+ * Republished whenever the night changes, which is exactly when someone is
+ * looking at it: signing up, being marked paid, gaining a pass, being
+ * removed. A player signing up at 2 AM refreshes it by that very act.
+ */
+async function publishDues(ev) {
+  if (store.mode === 'demo' || !ev || ev.status !== 'open' || isPastEvent(ev)) return;
+  const people = personTotals(ev)
+    .filter(p => !p.paid && p.total > 0)
+    .map(p => ({
+      name: p.name,
+      owed: p.total,
+      ids: p.signups.map(su => su.id),
+      email: p.signups.find(su => su.email)?.email || '',
+      lang: p.signups[0]?.lang === 'fr' ? 'fr' : 'en',
+    }));
+  try {
+    await store.saveDues(ev.id, { date: ev.date, updatedAt: Date.now(), people });
+  } catch (err) { console.error('publish dues', err); }
+}
+
+/* Keep every open night's dues current, debounced so a burst of changes
+ * publishes once. */
+let duesTimer = null;
+function scheduleDues() {
+  clearTimeout(duesTimer);
+  duesTimer = setTimeout(() => {
+    for (const ev of state.events) {
+      if (ev.status === 'open' && !isPastEvent(ev) && !isScheduled(ev)) publishDues(ev);
+    }
+  }, 2000);
+}
+
+/*
  * Mark people paid for the transfers that speak for themselves.
  *
  * Runs on any exec's device whenever the data changes — the Gmail script
@@ -2478,6 +2521,8 @@ async function main() {
     // Received e-transfers land here the moment the Gmail script files them.
     clearTimeout(matchTimer);
     matchTimer = setTimeout(runAutoMatch, 1200);
+    // Keep the Gmail matcher's view of who owes what current.
+    scheduleDues();
   });
 }
 

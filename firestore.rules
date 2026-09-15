@@ -46,6 +46,15 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // What each person still owes for one night, published by the app so the
+    // Gmail matcher can settle transfers while nobody has the app open. It is
+    // derived data — the app can always recompute it from the sign-ups.
+    match /dues/{eventId} {
+      allow read: if true;
+      allow write: if request.resource.data.date is string
+        && request.resource.data.date.size() <= 20;
+    }
+
     // Removal log: append-only proof trail. Anyone can add a record (the
     // app writes one whenever a name leaves a list) and read it back;
     // nobody can edit or delete an existing record from the client.

@@ -228,6 +228,26 @@ amount, message — and **never marks anyone paid**. It exists so the club can
 watch a real e-transfer travel Gmail → database → screen without moving real
 money or touching a real player's record.
 
+## Marking people paid without anyone watching
+
+The Gmail script does the whole job on its own, every 15 minutes: it reads
+new Interac notifications, files them, and **settles the ones that are
+unambiguous** — marking people paid and emailing them a receipt — with nobody
+signed in anywhere.
+
+Pricing is not duplicated to make that work. Season passes, both-slot
+bundles, late fees and part-paid evenings are intricate, and a second copy of
+those rules inside a Google Apps Script would drift out of sync the first time
+a price changed. So the app publishes the **answer** instead: a `dues/{eventId}`
+document listing who owes what, refreshed whenever the night changes — which
+is precisely when someone is looking at it (signing up, being marked paid,
+gaining a pass). The matcher only reads names and adds up numbers.
+
+The two matching rules are identical on both sides and
+`scripts/parity-check` compares them case by case, because two matchers that
+disagree would be worse than one. The app still settles anything the script
+left behind the moment an exec opens it.
+
 ## The four automatic emails
 
 All sent from the club's own Gmail, each in the language the player signed up

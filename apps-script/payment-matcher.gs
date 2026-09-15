@@ -28,6 +28,13 @@
 var PROJECT_ID = 'crsc-8fec4';
 var API_KEY = 'AIzaSyB7tE4RwcQgmAIIxdyISjQwbamEDmts_hQ';
 
+// Must match the same-named settings in the app. A transfer for exactly the
+// test amount proves the pipeline and pays for nothing; a transfer for a pass
+// price is left for the app, which owns the player registry.
+var TEST_AMOUNT = 1;
+var PASS_4H = 135;
+var PASS_2H = 75;
+
 function checkTransfers() {
   var threads = GmailApp.search('from:(interac.ca) newer_than:3d');
   threads.forEach(function (thread) {
@@ -44,6 +51,9 @@ function checkTransfers() {
       record(msg.getId(), sender, amount, message(body), msg.getDate());
     });
   });
+  // Filing the transfers is only half the job — settle the ones that are
+  // unambiguous right now, so nobody has to open the app for it to happen.
+  settleTransfers();
 }
 
 /*
@@ -74,4 +84,194 @@ function record(id, sender, amount, note, date) {
       },
     }),
   });
+}
+
+/* ==================================================================== *
+ * Settling: mark people paid, without anyone having the app open.
+ *
+ * The app publishes what each person still owes for each open night (the
+ * `dues` collection). All of the pricing — season passes, both-slot
+ * bundles, late fees — is decided there and only there, so nothing below
+ * has to know a single price. This reads names and adds up numbers.
+ *
+ * The two rules match the app's exactly, and both must hold:
+ *   1. every name in the transfer lands on exactly one person who owes
+ *   2. what those people owe equals the amount sent, to the cent
+ * Anything else is left for an exec on the Payments screen.
+ * ==================================================================== */
+
+function settleTransfers() {
+  var pending = listDocs('payments').filter(function (p) {
+    return !val(p, 'matched') && !val(p, 'noAuto');
+  });
+  if (!pending.length) return;
+
+  var dues = listDocs('dues').map(function (d) {
+    return {
+      eventId: d.name.split('/').pop(),
+      date: val(d, 'date'),
+      people: (val(d, 'people') || []).map(function (p) {
+        return { name: p.name, owed: Number(p.owed), ids: p.ids || [], email: p.email || '', lang: p.lang || 'en' };
+      }),
+    };
+  });
+
+  pending.forEach(function (pay) {
+    var amount = cents(val(pay, 'amount'));
+    if (amount <= 0 || amount === cents(TEST_AMOUNT)) return;   // $1 = pipeline test
+    if (amount === cents(PASS_4H) || amount === cents(PASS_2H)) return; // pass: the app tags it
+
+    var sender = val(pay, 'sender') || '';
+    var text = sender + ' ' + (val(pay, 'message') || '');
+    var hits = [];
+    dues.forEach(function (night) {
+      var all = resolve(text, night.people);
+      if (!all || !all.length) return;        // names collide, or nobody named
+      // The whole group first — that is the "paying for my friends" case the
+      // message is there to describe. Falling back to the sender alone covers
+      // a message that happens to name someone not being paid for.
+      var sets = [all];
+      var justSender = resolve(sender, night.people);
+      if (justSender && justSender.length) sets.push(justSender);
+      for (var i = 0; i < sets.length; i++) {
+        var owed = sets[i].reduce(function (a, p) { return a + cents(p.owed); }, 0);
+        if (owed === amount) { hits.push({ night: night, people: sets[i] }); return; }
+      }
+    });
+    if (hits.length !== 1) return;   // nothing certain, or certain on two nights
+
+    var night = hits[0].night, people = hits[0].people;
+    var names = people.map(function (p) { return p.name; });
+    people.forEach(function (p) {
+      p.ids.forEach(function (id) {
+        patch('events/' + night.eventId + '/signups/' + id,
+          { paid: bool(true), paidAt: int(Date.now()), paidVia: str('auto-gmail'), paidEmailSentAt: int(Date.now()) },
+          ['paid', 'paidAt', 'paidVia', 'paidEmailSentAt']);
+      });
+      receipt(p, pay, night, names);
+    });
+    patch('payments/' + pay.name.split('/').pop(),
+      { matched: bool(true), matchedTo: str(names.join(', ')), matchedEvent: str(night.eventId),
+        auto: bool(true), matchedAt: int(Date.now()) },
+      ['matched', 'matchedTo', 'matchedEvent', 'auto', 'matchedAt']);
+  });
+}
+
+/* Accents off, punctuation out — ANAIS COTE and Anaïs Côté are one name. */
+function norm(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function words(s) {
+  return norm(s).split(' ').filter(function (w) { return w.length >= 2; });
+}
+function cents(n) { return Math.round((Number(n) || 0) * 100); }
+
+/*
+ * Everyone named in the text: an array (empty when nobody is named), or
+ * null when two people answer to the same words and nothing separates them.
+ * Mirrors resolvePayment() in public/js/automatch.js.
+ */
+function resolve(text, people) {
+  var set = {};
+  words(text).forEach(function (w) { set[w] = true; });
+  var hits = [];
+  people.forEach(function (p) {
+    var m = words(p.name).filter(function (w) { return set[w]; });
+    if (m.length) hits.push({ person: p, matched: m, score: m.length });
+  });
+  // "Omar" and "Omar Khaled" both answer to "omar khaled"; the fuller name wins.
+  hits = hits.filter(function (h) {
+    return !hits.some(function (o) {
+      return o !== h && o.score > h.score && h.matched.every(function (w) { return o.matched.indexOf(w) >= 0; });
+    });
+  });
+  // Two people answering to the very same words: nothing separates them.
+  var seen = {};
+  for (var i = 0; i < hits.length; i++) {
+    var key = hits[i].matched.slice().sort().join(' ');
+    if (seen[key]) return null;
+    seen[key] = true;
+  }
+  return hits.map(function (h) { return h.person; });
+}
+
+/* "We got your money" — sent from the club Gmail, in their own language. */
+function receipt(person, pay, night, allNames) {
+  if (!person.email) return;
+  var fr = person.lang === 'fr';
+  var sent = Number(val(pay, 'amount')) + '$';
+  var others = allNames.filter(function (n) { return n !== person.name; });
+  var sender = norm(val(pay, 'sender') || '');
+  var isSender = words(person.name).some(function (w) { return sender.indexOf(w) >= 0; });
+  var open;
+  if (others.length === 0) {
+    open = fr ? 'Nous avons reçu votre paiement de ' + sent + ' pour le ' + night.date + '. Tout est réglé — rien d’autre à faire.'
+              : 'We received your payment of ' + sent + ' for ' + night.date + '. You’re all set — nothing else to do.';
+  } else if (isSender) {
+    open = fr ? 'Nous avons reçu votre paiement de ' + sent + ' pour le ' + night.date + ' — il couvrait vous et ' + others.join(', ') + '. Tout est réglé.'
+              : 'We received your payment of ' + sent + ' for ' + night.date + ' — it covered you and ' + others.join(', ') + '. You’re all set.';
+  } else {
+    open = fr ? 'Votre place pour le ' + night.date + ' est payée — ' + val(pay, 'sender') + ' l’a couverte par virement. Tout est réglé.'
+              : 'Your spot for ' + night.date + ' is paid — ' + val(pay, 'sender') + ' covered it with their e-transfer. You’re all set.';
+  }
+  MailApp.sendEmail({
+    to: person.email,
+    subject: fr ? 'CRSC — Paiement reçu pour le ' + night.date + ' ✓'
+                : 'CRSC — Payment received for ' + night.date + ' ✓',
+    body: (fr ? 'Salut ' : 'Hey ') + person.name + '!\n\n' + open +
+      (fr ? '\n\nEn arrivant au gymnase, ouvrez la page d’inscription et touchez « Je suis là ».\n\n— CRSC'
+          : '\n\nWhen you arrive at the gym, open the sign-up page and tap "I’m here".\n\n— CRSC'),
+    name: 'CRSC',
+  });
+}
+
+/* ---- Firestore REST helpers ---- */
+
+function fsUrl(path) {
+  return 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID +
+    '/databases/(default)/documents/' + path + '?key=' + API_KEY;
+}
+
+function listDocs(collection) {
+  var out = [], token = '';
+  do {
+    var url = fsUrl(collection) + '&pageSize=300' + (token ? '&pageToken=' + token : '');
+    var res = JSON.parse(UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getContentText() || '{}');
+    (res.documents || []).forEach(function (d) { out.push(d); });
+    token = res.nextPageToken || '';
+  } while (token);
+  return out;
+}
+
+function patch(path, fields, mask) {
+  var url = fsUrl(path) + mask.map(function (f) { return '&updateMask.fieldPaths=' + f; }).join('');
+  UrlFetchApp.fetch(url, {
+    method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ fields: fields }),
+  });
+}
+
+function str(v) { return { stringValue: String(v) }; }
+function int(v) { return { integerValue: String(v) }; }
+function bool(v) { return { booleanValue: !!v }; }
+
+/* Firestore's typed JSON back into plain values. */
+function val(doc, field) {
+  var f = (doc.fields || {})[field];
+  return f === undefined ? undefined : decode(f);
+}
+function decode(f) {
+  if ('stringValue' in f) return f.stringValue;
+  if ('integerValue' in f) return Number(f.integerValue);
+  if ('doubleValue' in f) return Number(f.doubleValue);
+  if ('booleanValue' in f) return f.booleanValue;
+  if ('nullValue' in f) return null;
+  if ('arrayValue' in f) return (f.arrayValue.values || []).map(decode);
+  if ('mapValue' in f) {
+    var o = {};
+    Object.keys(f.mapValue.fields || {}).forEach(function (k) { o[k] = decode(f.mapValue.fields[k]); });
+    return o;
+  }
+  return undefined;
 }

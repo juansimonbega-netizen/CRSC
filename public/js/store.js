@@ -309,6 +309,7 @@ function createDemoStore() {
     watchPlayers() {},
     watchPayments() {},
     watchRemovals() {},
+    async saveDues() { /* demo mode has no server-side matcher to feed */ },
     async updatePayment(paymentId, patch) {
       const p = state.payments.find(x => x.id === paymentId);
       if (p) Object.assign(p, patch);
@@ -418,6 +419,12 @@ async function createFirebaseStore(config) {
         state.payments.sort((a, b) => (b.receivedAt || 0) - (a.receivedAt || 0));
         emit();
       }, err => console.error('payments listener', err));
+    },
+    /* What each person still owes for one night, published for the Gmail
+     * matcher to read. Prices live in the app and only in the app; this is
+     * the answer, not the rules. */
+    async saveDues(eventId, data) {
+      await fs.setDoc(fs.doc(db, 'dues', eventId), data);
     },
     async updatePayment(paymentId, patch) {
       await fs.setDoc(fs.doc(db, 'payments', paymentId), patch, { merge: true });
@@ -546,6 +553,9 @@ async function createArtifactDbStore() {
     async savePlayer(player) {
       const { deviceId, ...data } = player;
       await mergeWrite(db.doc('players/' + deviceId), data);
+    },
+    async saveDues(eventId, data) {
+      await mergeWrite(db.doc('dues/' + eventId), data);
     },
     async updatePayment(paymentId, patch) {
       await mergeWrite(db.doc('payments/' + paymentId), patch);
