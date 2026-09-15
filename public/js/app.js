@@ -441,6 +441,75 @@ async function sendConfirmationEmail(ev, profile, listIds, method) {
 }
 
 /*
+ * "We got your money" — the receipt.
+ *
+ * Without it, automatic matching is invisible to the player: they send an
+ * e-transfer and hear nothing, so they ask an exec anyway and the club is
+ * back to answering messages by hand. Sent once per person per event
+ * (claimed before sending, so two execs' open tabs cannot both send it).
+ */
+async function notifyPaymentReceived(ev, people, pay = null) {
+  if (store.mode === 'demo' || !mailerConfigured()) return;
+  // One transfer often pays for several people. The person who actually sent
+  // it must see the amount they really sent and who it covered — telling a
+  // player "we received 8$" when they sent 16$ reads like half of it vanished.
+  const senderName = pay && people.length > 1
+    ? (nameHits(pay.sender || '', people)[0]?.person?.name || null)
+    : null;
+  for (const p of people) {
+    const sus = (p.signups || []).filter(su => su.email && !su.paidEmailSentAt);
+    if (!sus.length) continue;
+    const su = sus[0];
+    const lang = su.lang === 'fr' ? 'fr' : 'en';
+    const lists = sus.map(x => {
+      const l = listById(ev, x.listId);
+      const sess = l ? sessionById(ev, l.sessionId) : null;
+      return `• ${SPORTS[l?.sport]?.label || ''} ${l?.label || ''}${sess ? ' (' + sess.label + ')' : ''}`;
+    }).join('\n');
+    const isSender = senderName && p.name === senderName;
+    const others = people.filter(x => x.name !== p.name).map(x => x.name);
+    const date = fmtDateLang(ev.date, lang);
+    const openLine = !senderName
+      ? tLang(lang, 'paidOpenSelf', { total: fmtMoney(p.paidAmount || p.total || 0), date })
+      : isSender
+        ? tLang(lang, 'paidOpenGroup', { total: fmtMoney(pay.amount || 0), date, names: others.join(', ') })
+        : tLang(lang, 'paidOpenCovered', { date, sender: senderName });
+    await Promise.all(sus.map(x => store.updateSignup(ev.id, x.id, { paidEmailSentAt: Date.now() })));
+    try {
+      await sendMail({
+        to: su.email,
+        subject: tLang(lang, 'emailPaidSubject', { date }),
+        message: tLang(lang, 'emailPaidBody', {
+          name: su.name,
+          date,
+          openLine,
+          lists,
+          location: ev.location || state.settings.location || '',
+          club: state.settings.clubFullName || 'CRSC',
+        }),
+      });
+    } catch (err) { console.error('payment receipt', err); }
+  }
+}
+
+/* A season pass is real money and a standing commitment — it gets its own
+ * receipt explaining what the player just bought. */
+async function notifyPassActivated(player, type, amount) {
+  if (store.mode === 'demo' || !mailerConfigured() || !player.email) return;
+  const lang = player.lang === 'fr' ? 'fr' : 'en';
+  try {
+    await sendMail({
+      to: player.email,
+      subject: tLang(lang, 'emailPassSubject', { type: type.toUpperCase() }),
+      message: tLang(lang, 'emailPassBody', {
+        name: player.name, type: type.toUpperCase(),
+        total: fmtMoney(amount), club: state.settings.clubFullName || 'CRSC',
+      }),
+    });
+  } catch (err) { console.error('pass receipt', err); }
+}
+
+/*
  * 24h-before payment reminders. A static site has no scheduler, so this runs
  * whenever anyone has the app open inside the reminder window; each person's
  * signups are flagged (claim-first) so nobody is emailed twice.
@@ -1977,6 +2046,7 @@ async function runAutoMatch() {
           matched: true, matchedTo: top.name, auto: true,
           matchedAt: Date.now(), kind: 'pass',
         });
+        await notifyPassActivated(top, pass, pay.amount || 0);
         toast(t('passAutoToast', { name: top.name, type: pass.toUpperCase() }));
       }
       continue;   // never spend a pass payment on a single night's game fee
@@ -1996,6 +2066,7 @@ async function runAutoMatch() {
       matched: true, matchedTo: names, matchedEvent: ev.id,
       auto: true, matchedAt: Date.now(),
     });
+    await notifyPaymentReceived(ev, people, pay);
     toast(t('autoMatchedToast', { names, amount: fmtMoney(pay.amount || 0) }));
   }
 }
@@ -2132,6 +2203,7 @@ function openSummaryModal(ev) {
       if (!person) return;
       await Promise.all(person.signups.map(su => store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now() })));
       await store.updatePayment(pay.id, { matched: true, matchedTo: name, matchedEvent: ev.id });
+      await notifyPaymentReceived(ev, [person], pay);
       toast(t('matchedToast', { name, amount: fmtMoney(pay.amount || 0) }));
       ov.remove();
       openSummaryModal(state.events.find(e => e.id === ev.id) || ev);

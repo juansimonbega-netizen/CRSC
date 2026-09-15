@@ -292,6 +292,20 @@ const STRINGS = {
     'Hey {name}!\n\nGood news — a spot opened up and you moved off the waitlist. You\'re now confirmed for:\n{list} ({session}) on {date}\n\n{payLine}\n\nWhere: {location}\n\nCan\'t make it? Please remove your name on the sign-up page.\n\n— {club}',
     'Salut {name}!\n\nBonne nouvelle — une place s\'est libérée et vous quittez la liste d\'attente. Vous êtes confirmé pour :\n{list} ({session}) le {date}\n\n{payLine}\n\nOù : {location}\n\nVous ne pouvez plus venir? Retirez votre nom sur la page d\'inscription.\n\n— {club}',
   ],
+  emailPaidSubject: ['CRSC — Payment received for {date} \u2713', 'CRSC — Paiement reçu pour le {date} \u2713'],
+  // Three openings, because who paid changes what is true for the reader.
+  paidOpenSelf: ['We received your payment of {total} for {date}. You\u2019re all set \u2014 nothing else to do.', 'Nous avons reçu votre paiement de {total} pour le {date}. Tout est réglé \u2014 rien d\u2019autre à faire.'],
+  paidOpenGroup: ['We received your payment of {total} for {date} \u2014 it covered you and {names}. You\u2019re all set.', 'Nous avons reçu votre paiement de {total} pour le {date} \u2014 il couvrait vous et {names}. Tout est réglé.'],
+  paidOpenCovered: ['Your spot for {date} is paid \u2014 {sender} covered it with their e-transfer. You\u2019re all set, nothing else to do.', 'Votre place pour le {date} est payée \u2014 {sender} l\u2019a couverte par virement. Tout est réglé, rien d\u2019autre à faire.'],
+  emailPaidBody: [
+    'Hey {name}!\n\n{openLine}\n\n{lists}\n\nWhere: {location}\n\nWhen you arrive at the gym, open the sign-up page and tap "I\u2019m here" to check in.\n\n\u2014 {club}',
+    'Salut {name}!\n\n{openLine}\n\n{lists}\n\nOù : {location}\n\nEn arrivant au gymnase, ouvrez la page d\u2019inscription et touchez « Je suis là » pour confirmer votre présence.\n\n\u2014 {club}',
+  ],
+  emailPassSubject: ['CRSC — Your {type} season pass is active \u2713', 'CRSC — Votre passe de saison {type} est active \u2713'],
+  emailPassBody: [
+    'Hey {name}!\n\nWe received {total} and your {type} volleyball season pass is now active for the rest of the season.\n\nWhat that means:\n\u2022 Your volleyball spot is held for you every Saturday \u2014 you do not have to sign up each week.\n\u2022 Nothing more to pay for volleyball this season.\n\nIf you can\u2019t make it on a given Saturday, tell an exec in advance so we can free your spot for someone else that week.\n\n\u2014 {club}',
+    'Salut {name}!\n\nNous avons reçu {total} et votre passe de saison {type} de volleyball est maintenant active pour le reste de la saison.\n\nCe que ça veut dire :\n\u2022 Votre place de volleyball est réservée chaque samedi \u2014 pas besoin de vous inscrire chaque semaine.\n\u2022 Plus rien à payer pour le volleyball cette saison.\n\nSi vous ne pouvez pas venir un samedi, prévenez un exec à l\u2019avance pour libérer votre place cette semaine-là.\n\n\u2014 {club}',
+  ],
   payLineE: ['Payment ({total}): send an Interac e-transfer to {email} and put your name in the message.', 'Paiement ({total}) : envoyez un virement Interac à {email} en indiquant votre nom dans le message.'],
   payLineC: ['Payment ({total}): bring cash and pay an exec at the gym before you play.', 'Paiement ({total}) : apportez du comptant et payez un exec au gymnase avant de jouer.'],
   confEmailSent: ['Confirmation email sent to {email}', 'Courriel de confirmation envoyé à {email}'],

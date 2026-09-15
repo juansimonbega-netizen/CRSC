@@ -228,6 +228,26 @@ amount, message — and **never marks anyone paid**. It exists so the club can
 watch a real e-transfer travel Gmail → database → screen without moving real
 money or touching a real player's record.
 
+## The four automatic emails
+
+All sent from the club's own Gmail, each in the language the player signed up
+in, and each sent once (claimed on the sign-up before sending, so two execs'
+open tabs cannot double-send).
+
+| When | Email |
+|---|---|
+| They sign up | You're on the list, what you owe, how to pay |
+| 24h before, through game day | Payment reminder, if still unpaid |
+| A spot frees up | You're off the waitlist and confirmed |
+| Their money is matched | **Payment received** — receipt, nothing left to do |
+
+The receipt is the half that makes automatic matching visible: without it a
+player e-transfers, hears nothing, and asks an exec anyway. It says the right
+thing for who is reading — someone who sent $16 for two people sees $16 and
+who it covered; the person they paid for is told who covered them, not that
+"their payment" arrived. Buying a season pass gets its own receipt explaining
+that their spot is now held every week.
+
 ## Removal log (proof trail)
 
 Taking a name off a list frees the spot, so the sign-up itself has to go —
