@@ -79,6 +79,39 @@ const STRINGS = {
   autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
   undo: ['Undo', 'Annuler'],
 
+  // Season pass: held spots, level, automatic tagging
+  passModalHint: ['Set the season pass and the level this spot is held in. A held spot is added to every Saturday automatically.', 'Choisissez la passe de saison et le niveau où la place est réservée. Une place réservée est ajoutée à chaque samedi automatiquement.'],
+  noPass: ['No pass', 'Aucune passe'],
+  heldSpotLbl: ['Spot held in', 'Place réservée dans'],
+  heldSpotNote: ['Pick one list for a 2H pass, or one per time slot for 4H. If they cannot come, remove their name for that week — it will not come back.', 'Choisissez une liste pour la passe 2H, ou une par plage horaire pour la 4H. En cas d\u2019absence, retirez leur nom pour cette semaine — il ne reviendra pas.'],
+  setPass: ['Set season pass', 'Définir la passe'],
+  passSetTo: ['Season pass · {type}', 'Passe de saison · {type}'],
+  passSeated: ['{n} held spot(s) added for pass holders', '{n} place(s) réservée(s) ajoutée(s)'],
+  passAutoToast: ['{name} got the {type} season pass automatically', '{name} a reçu la passe {type} automatiquement'],
+  heldChip: ['HELD', 'RÉSERVÉ'],
+
+  // Exec: find a player inside an event
+  findPlayer: ['Find player', 'Trouver un joueur'],
+  findTitle: ['Find a player', 'Trouver un joueur'],
+  findPh: ['Type a name, @handle, email or phone', 'Nom, @pseudo, courriel ou téléphone'],
+  findEmpty: ['Start typing to search every list in this event.', 'Commencez à taper pour chercher dans toutes les listes.'],
+  confirmedSpot: ['confirmed', 'confirmé'],
+  onWaitlist: ['waitlist #{n}', 'liste d\u2019attente #{n}'],
+  paidChip: ['PAID', 'PAYÉ'],
+  unpaidChip: ['UNPAID', 'IMPAYÉ'],
+  inChip: ['IN', 'PRÉSENT'],
+  outChip: ['NOT IN', 'ABSENT'],
+
+  // Pipeline test transfers
+  testTitle: ['Test transfer received \u2713', 'Virement test reçu \u2713'],
+  testOk: ['The e-transfer pipeline works', 'La chaîne de virements fonctionne'],
+  testFrom: ['from {sender} · {amount} · read from Gmail and filed here', 'de {sender} · {amount} · lu depuis Gmail et enregistré ici'],
+  testNote: ['A transfer of exactly {amount} is treated as a test: it proves Gmail → database → this screen works, and never marks anyone paid. Dismiss with \u2715.', 'Un virement d\u2019exactement {amount} est un test : il prouve que Gmail → base de données → cet écran fonctionne, sans marquer personne payé. Rejeter avec \u2715.'],
+
+  // Policies
+  policiesLink: ['Read the full Policies & FAQ \u2192', 'Lire les politiques et la FAQ \u2192'],
+  policiesUrlLbl: ['Policies & FAQ link', 'Lien des politiques et FAQ'],
+
   /* cancellation lock + late fee */
   cancelLocked: ['Cancellations are closed for this event — message an exec if you can\'t make it.', 'Les annulations sont fermées pour cet événement — écrivez à un exec si vous ne pouvez pas venir.'],
   lateFee: ['incl. late fee', 'incl. frais de retard'],
@@ -132,6 +165,39 @@ const STRINGS = {
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
   undo: ['Undo', 'Annuler'],
+
+  // Season pass: held spots, level, automatic tagging
+  passModalHint: ['Set the season pass and the level this spot is held in. A held spot is added to every Saturday automatically.', 'Choisissez la passe de saison et le niveau où la place est réservée. Une place réservée est ajoutée à chaque samedi automatiquement.'],
+  noPass: ['No pass', 'Aucune passe'],
+  heldSpotLbl: ['Spot held in', 'Place réservée dans'],
+  heldSpotNote: ['Pick one list for a 2H pass, or one per time slot for 4H. If they cannot come, remove their name for that week — it will not come back.', 'Choisissez une liste pour la passe 2H, ou une par plage horaire pour la 4H. En cas d\u2019absence, retirez leur nom pour cette semaine — il ne reviendra pas.'],
+  setPass: ['Set season pass', 'Définir la passe'],
+  passSetTo: ['Season pass · {type}', 'Passe de saison · {type}'],
+  passSeated: ['{n} held spot(s) added for pass holders', '{n} place(s) réservée(s) ajoutée(s)'],
+  passAutoToast: ['{name} got the {type} season pass automatically', '{name} a reçu la passe {type} automatiquement'],
+  heldChip: ['HELD', 'RÉSERVÉ'],
+
+  // Exec: find a player inside an event
+  findPlayer: ['Find player', 'Trouver un joueur'],
+  findTitle: ['Find a player', 'Trouver un joueur'],
+  findPh: ['Type a name, @handle, email or phone', 'Nom, @pseudo, courriel ou téléphone'],
+  findEmpty: ['Start typing to search every list in this event.', 'Commencez à taper pour chercher dans toutes les listes.'],
+  confirmedSpot: ['confirmed', 'confirmé'],
+  onWaitlist: ['waitlist #{n}', 'liste d\u2019attente #{n}'],
+  paidChip: ['PAID', 'PAYÉ'],
+  unpaidChip: ['UNPAID', 'IMPAYÉ'],
+  inChip: ['IN', 'PRÉSENT'],
+  outChip: ['NOT IN', 'ABSENT'],
+
+  // Pipeline test transfers
+  testTitle: ['Test transfer received \u2713', 'Virement test reçu \u2713'],
+  testOk: ['The e-transfer pipeline works', 'La chaîne de virements fonctionne'],
+  testFrom: ['from {sender} · {amount} · read from Gmail and filed here', 'de {sender} · {amount} · lu depuis Gmail et enregistré ici'],
+  testNote: ['A transfer of exactly {amount} is treated as a test: it proves Gmail → database → this screen works, and never marks anyone paid. Dismiss with \u2715.', 'Un virement d\u2019exactement {amount} est un test : il prouve que Gmail → base de données → cet écran fonctionne, sans marquer personne payé. Rejeter avec \u2715.'],
+
+  // Policies
+  policiesLink: ['Read the full Policies & FAQ \u2192', 'Lire les politiques et la FAQ \u2192'],
+  policiesUrlLbl: ['Policies & FAQ link', 'Lien des politiques et FAQ'],
   selfCheckedInToast: ['You\'re checked in — have a good game!', 'Présence confirmée — bonne partie!'],
   selfCheckOutToast: ['Check-in removed', 'Présence annulée'],
 

@@ -191,6 +191,43 @@ from claiming it again, so an exec's correction is never overwritten.
 
 (The outgoing mailer lives in [`apps-script/mailer.gs`](apps-script/mailer.gs).)
 
+## Season pass (Battle Pass)
+
+A volleyball season pass: **4h $135** (instead of $165) or **2h $75** (instead
+of $88). Two things happen on their own.
+
+**Buying one tags it.** An e-transfer for exactly a pass price is read as
+buying a pass, not paying for a night — the amounts are nothing like a game
+fee, so the amount alone says what it is. If the sender resolves to exactly
+one registered player, their pass is set and the payment is filed as such. It
+is never spent on a single night's game fee.
+
+**The spot is standing.** Pass holders paid for a season, so their seat is
+held every Saturday: when an exec sets the pass they also pick **which lists**
+the seat lives in (a 2h pass holds one; a 4h pass can hold one in each time
+slot), and from then on every new Saturday seats them there automatically,
+above the walk-up queue so a midnight rush cannot push them onto the waitlist.
+
+If a pass holder cannot come, an exec removes their name for that week and it
+**stays** removed — the seating only ever adds a missing spot, it never
+re-adds one somebody took off on purpose.
+
+## Finding one person
+
+Execs get **Find player** on every event: one box that searches every list at
+once by name, @handle, email or phone, and opens that person's row controls
+straight from the result. Accents and capitals are ignored — `cote` finds
+Anaïs Côté, which matters when you are typing one-handed at the door. The
+same search covers the whole club in the **Players** directory.
+
+## Testing the payment pipeline
+
+A transfer for exactly **$1** (`testAmount`) is treated as a test: it appears
+on the Payments screen showing everything the club parsed out of it — sender,
+amount, message — and **never marks anyone paid**. It exists so the club can
+watch a real e-transfer travel Gmail → database → screen without moving real
+money or touching a real player's record.
+
 ## Removal log (proof trail)
 
 Taking a name off a list frees the spot, so the sign-up itself has to go —

@@ -36,6 +36,17 @@ export const DEFAULT_SETTINGS = {
   // before a Saturday game, so exactly one Saturday is open at a time.
   signupOpenDaysBefore: 6,
   battlePassNote: 'Volleyball season pass — 4h (both slots) 135$ instead of 165$ · 2h 75$ instead of 88$. E-transfer the club and an exec activates it on your profile.',
+  // What a season pass costs. An e-transfer for exactly one of these amounts
+  // tags the sender's pass on its own, so nobody has to remember to do it.
+  passPrice4h: 135,
+  passPrice2h: 75,
+  // A pass holder's seat is held for them every week; they tell an exec in
+  // advance when they cannot make it and the exec takes the name off.
+  passAutoSeat: true,
+  // Dollar amount reserved for end-to-end testing. A transfer for exactly
+  // this never marks anyone paid — it only proves the pipeline works.
+  testAmount: 1,
+  policiesUrl: 'https://tr.ee/iiwCfpxvsA',
   policies: [
     'For e-Transfer make sure to mention the name of the person(s) you are paying for.',
     'Please note that the host might move your name to the appropriate level.',
@@ -76,14 +87,18 @@ export function deviceId() {
 
 /* A ready-to-use Saturday template mirroring the club's current sheet. */
 export function makeTemplateEvent(dateStr, title) {
+  // The club's actual lists. Labels say who a list is for — a player picking
+  // a level should never have to ask whether it is mixed or men's.
   const lists = [
-    { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Mixed',      cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
-    { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Men',        cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
-    { id: uid('l'), sessionId: 's1', sport: 'football',   label: '5v5',        cap: 15, priceE: 10, priceC: 10, teamCount: 0 },
-    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced +', cap: 14, priceE: 8,  priceC: 10, teamCount: 2 },
-    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced',   cap: 14, priceE: 8,  priceC: 10, teamCount: 2 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Advanced',   cap: 28, priceE: 8,  priceC: 10, teamCount: 4 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Advanced +', cap: 28, priceE: 8,  priceC: 10, teamCount: 4 },
+    { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Mixed',              cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
+    { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Men',                cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
+    { id: uid('l'), sessionId: 's1', sport: 'football',   label: '5v5',                cap: 15, priceE: 10, priceC: 10, teamCount: 0 },
+    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced +',         cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced',           cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Intermediate',       cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Advanced',           cap: 28, priceE: 8,  priceC: 10, teamCount: 4 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Mixed',        cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Men',          cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
   ];
   return {
     id: uid('ev'),

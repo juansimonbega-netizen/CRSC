@@ -3,7 +3,7 @@ import {
 } from './store.js';
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
 import { promotionCandidate, sendMail, mailerConfigured, reminderDue } from './notify.js';
-import { resolvePayment, nameHits } from './automatch.js';
+import { resolvePayment, nameHits, passPurchase, isTestTransfer, normalize } from './automatch.js';
 
 /* ================================================================== */
 /* Small utilities                                                     */
@@ -206,6 +206,62 @@ function cancellationLocked(ev) {
  * on the player's registry entry. */
 function playerPass(deviceId) {
   return (deviceId && (state.players || {})[deviceId]?.battlePass) || null;
+}
+
+/*
+ * The lists a pass holder is seated in every week — sport + time slot +
+ * level, matched by name so it follows the player into each new Saturday.
+ * A 2h pass holds one; a 4h pass can hold one in each time slot.
+ */
+function passLists(player) {
+  return Array.isArray(player?.passLists) ? player.passLists : [];
+}
+
+function findList(ev, want) {
+  return (ev.lists || []).find(l =>
+    l.sport === want.sport && l.sessionId === want.sessionId && l.label === want.label);
+}
+
+/*
+ * Seat the season-pass holders.
+ *
+ * A pass is a standing reservation: the club took a season's money up front,
+ * so the spot is theirs before sign-ups open and stays theirs whether or not
+ * they remember to sign up. They tell an exec when they cannot make it and
+ * the exec takes the name off for that week — which is why this only ever
+ * ADDS a missing seat and never re-adds one somebody removed on purpose.
+ *
+ * `order: -1` puts them above the walk-up queue, so a held spot cannot be
+ * pushed onto the waitlist by people signing up at midnight on Sunday.
+ */
+async function seatPassHolders(ev) {
+  if (!isExec() || !state.settings.passAutoSeat) return;
+  if (ev.status !== 'open' || isPastEvent(ev)) return;
+  const existing = eventSignups(ev.id);
+  const removed = new Set((state.removals || [])
+    .filter(r => r.eventId === ev.id)
+    .map(r => (r.deviceId || '') + '|' + r.listId));
+  const adds = [];
+  for (const player of Object.values(state.players || {})) {
+    if (!player.battlePass) continue;
+    for (const want of passLists(player)) {
+      const list = findList(ev, want);
+      if (!list) continue;
+      if (existing.some(su => su.deviceId === player.deviceId && su.listId === list.id)) continue;
+      if (removed.has(player.deviceId + '|' + list.id)) continue;   // taken off on purpose
+      adds.push({
+        id: uid('su'), listId: list.id, name: player.name,
+        email: player.email || '', phone: player.phone || '', insta: player.insta || '',
+        photo: player.photo || '', method: 'etransfer', deviceId: player.deviceId,
+        paid: false, checkedIn: false, lang: player.lang || 'en',
+        viaPass: true, order: -1, createdAt: Date.now(),
+      });
+    }
+  }
+  if (adds.length) {
+    await store.addSignups(ev.id, adds);
+    toast(t('passSeated', { n: adds.length }));
+  }
 }
 
 /*
@@ -958,6 +1014,7 @@ function renderHome() {
       ${s.battlePassNote ? `<p><strong>${esc(t('battlePass'))}:</strong> ${esc(s.battlePassNote)}</p>` : ''}
       <ul>${(s.policies || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>
       <p class="late-fee">${esc(s.lateFeeNote || '')}</p>
+      ${s.policiesUrl ? `<a class="policies-link" href="${esc(s.policiesUrl)}" target="_blank" rel="noopener">${esc(t('policiesLink'))}</a>` : ''}
     </footer>`;
 
   $('#btn-edit-profile')?.addEventListener('click', () => openProfileModal());
@@ -1079,7 +1136,7 @@ function renderEvent(ev) {
   const mine = mySignups(ev.id);
   const isOpen = isEventOpen(ev);
   const coveredSet = coveredSignupIds(ev);
-  if (exec) { store.watchPayments(); store.watchRemovals(); }
+  if (exec) { store.watchPayments(); store.watchRemovals(); seatPassHolders(ev); }
 
   const sessionsHtml = (ev.sessions || []).map(sess => {
     const lists = (ev.lists || []).filter(l => l.sessionId === sess.id);
@@ -1159,6 +1216,7 @@ function renderEvent(ev) {
           <button class="btn btn-small ${(state.payments || []).some(p => !p.matched) ? 'btn-warn' : 'btn-ghost'}" id="btn-summary">${esc(t('payments'))}${(state.payments || []).filter(p => !p.matched).length ? ` · ${(state.payments || []).filter(p => !p.matched).length}` : ''}</button>
           <button class="btn btn-small btn-ghost" id="btn-csv">${esc(t('exportCsv'))}</button>
           <button class="btn btn-small btn-ghost" id="btn-toggle-open">${esc(isOpen ? t('closeSignups') : t('reopenSignups'))}</button>
+          <button class="btn btn-small btn-ghost" id="btn-find">${esc(t('findPlayer'))}</button>
         </div>` : ''}
     </div>
     ${sessionsHtml}
@@ -1177,6 +1235,7 @@ function renderEvent(ev) {
       toast(t('removedSelf'));
     }
   }));
+  $('#btn-find')?.addEventListener('click', () => openFindModal(ev));
   $('#btn-how-pay')?.addEventListener('click', () => openPayInfoModal(ev));
   $('#btn-self-in')?.addEventListener('click', async () => {
     await Promise.all(mySignups(ev.id).map(m => store.updateSignup(ev.id, m.id, { checkedIn: true, selfCheckIn: true })));
@@ -1326,6 +1385,7 @@ function openJoinSheet(ev, preselectedListId) {
         <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
         <button class="btn btn-primary grow" id="join-confirm">${esc(t('confirmSignup'))}</button>
       </div>
+      ${s.policiesUrl ? `<a class="policies-link" href="${esc(s.policiesUrl)}" target="_blank" rel="noopener">${esc(t('policiesLink'))}</a>` : ''}
     </div>`);
 
   wireProfileFields(ov, p);
@@ -1496,11 +1556,9 @@ function openPlayerAdminModal(ev, su) {
       })() : ''}
       ${su.deviceId && su.deviceId !== 'exec-added' ? `
         <label class="field-label">${esc(t('battlePassLbl'))}</label>
-        <div class="row gap" id="pa-pass">
-          <button class="btn btn-small grow ${!playerPass(su.deviceId) ? 'btn-exec' : 'btn-ghost'}" data-pass="">—</button>
-          <button class="btn btn-small grow ${playerPass(su.deviceId) === '2h' ? 'btn-exec' : 'btn-ghost'}" data-pass="2h">2h</button>
-          <button class="btn btn-small grow ${playerPass(su.deviceId) === '4h' ? 'btn-exec' : 'btn-ghost'}" data-pass="4h">4h</button>
-        </div>` : ''}
+        <button class="btn btn-small wide ${playerPass(su.deviceId) ? 'btn-exec' : 'btn-ghost'}" id="pa-pass">
+          ${esc(playerPass(su.deviceId) ? t('passSetTo', { type: playerPass(su.deviceId).toUpperCase() }) : t('setPass'))}
+        </button>` : ''}
       <label class="field-label">${esc(t('moveTo'))}</label>
       <select class="input" id="pa-move">${listsOptions}</select>
       <div class="row gap">
@@ -1550,12 +1608,13 @@ function openPlayerAdminModal(ev, su) {
       x.className = `btn btn-small ${(+x.dataset.team || null) === n ? 'btn-exec' : 'btn-ghost'}`;
     });
   }));
-  $$('#pa-pass [data-pass]', ov).forEach(b => b.addEventListener('click', async () => {
-    await setBattlePass({ deviceId: su.deviceId, name: su.name }, b.dataset.pass || null);
-    $$('#pa-pass [data-pass]', ov).forEach(x => {
-      x.className = `btn btn-small grow ${x === b ? 'btn-exec' : 'btn-ghost'}`;
+  const passBtn = $('#pa-pass', ov);
+  if (passBtn) passBtn.addEventListener('click', () => {
+    openPassModal({ deviceId: su.deviceId, name: su.name, battlePass: playerPass(su.deviceId) }, (type) => {
+      passBtn.className = 'btn btn-small wide ' + (type ? 'btn-exec' : 'btn-ghost');
+      passBtn.textContent = type ? t('passSetTo', { type: type.toUpperCase() }) : t('setPass');
     });
-  }));
+  });
   $('#pa-move', ov).addEventListener('change', async e => {
     await moveSignup(ev, su, e.target.value);
     toast(t('moved', { name: su.name }));
@@ -1657,13 +1716,86 @@ function allPlayers() {
 }
 
 /* Set/clear a player's Battle Pass (execs only; volleyball season pass). */
-async function setBattlePass(player, type) {
+async function setBattlePass(player, type, lists = null) {
   await store.savePlayer({
     deviceId: player.deviceId,
     name: player.name,
     battlePass: type || null,
+    // Clearing the pass clears the standing reservation with it.
+    passLists: type ? (lists || passLists(player)) : [],
   });
   toast(type ? t('battlePassSet', { name: player.name, type: type.toUpperCase() }) : t('battlePassRemoved', { name: player.name }));
+}
+
+/*
+ * Set a player's season pass and the level their seat is held in.
+ *
+ * The level matters as much as the pass: holding a spot is meaningless until
+ * the club knows WHICH list to hold it in, and pass holders are usually
+ * regulars in one specific level. A 4h pass can hold a spot in both time
+ * slots, which is what it is paying for.
+ */
+function openPassModal(player, onDone) {
+  const ev = state.events.find(e => !isPastEvent(e) && e.status === 'open') || state.events[0];
+  const chosen = passLists(state.players[player.deviceId] || player).slice();
+  const has = (l) => chosen.some(c => c.sport === l.sport && c.sessionId === l.sessionId && c.label === l.label);
+  let type = player.battlePass || null;
+
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(player.name)}</h2>
+      <p class="hint">${esc(t('passModalHint'))}</p>
+      <label class="field-label">${esc(t('battlePassLbl'))}</label>
+      <div class="row gap" id="pm-type">
+        <button class="btn btn-small grow" data-type="">${esc(t('noPass'))}</button>
+        <button class="btn btn-small grow" data-type="2h">2H · ${fmtMoney(state.settings.passPrice2h)}</button>
+        <button class="btn btn-small grow" data-type="4h">4H · ${fmtMoney(state.settings.passPrice4h)}</button>
+      </div>
+      <div id="pm-seats">
+        <label class="field-label">${esc(t('heldSpotLbl'))}</label>
+        <div class="pass-lists">
+          ${(ev?.sessions || []).map(sess => `
+            <div class="pass-sess">
+              <small class="hint">${esc(sess.label)}</small>
+              ${(ev.lists || []).filter(l => l.sessionId === sess.id).map(l => `
+                <label class="pass-opt">
+                  <input type="checkbox" data-list="${esc(l.id)}" ${has(l) ? 'checked' : ''}>
+                  <span>${esc(SPORTS[l.sport]?.emoji || '')} ${esc(SPORTS[l.sport]?.label || l.sport)} — ${esc(l.label)}</span>
+                </label>`).join('')}
+            </div>`).join('')}
+        </div>
+        <p class="hint">${esc(t('heldSpotNote'))}</p>
+      </div>
+      <div class="row gap">
+        <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
+        <button class="btn btn-primary grow" id="pm-save">${esc(t('save'))}</button>
+      </div>
+    </div>`, { wide: true });
+
+  function paint() {
+    $$('#pm-type [data-type]', ov).forEach(b =>
+      b.className = 'btn btn-small grow ' + ((b.dataset.type || null) === type ? 'btn-exec' : 'btn-ghost'));
+    $('#pm-seats', ov).hidden = !type;
+  }
+  $$('#pm-type [data-type]', ov).forEach(b => b.addEventListener('click', () => {
+    type = b.dataset.type || null;
+    paint();
+  }));
+  paint();
+
+  $('#pm-save', ov).addEventListener('click', async () => {
+    const lists = [];
+    if (type) {
+      for (const cb of $$('[data-list]', ov)) {
+        if (!cb.checked) continue;
+        const l = (ev.lists || []).find(x => x.id === cb.dataset.list);
+        if (l) lists.push({ sport: l.sport, sessionId: l.sessionId, label: l.label });
+      }
+    }
+    await setBattlePass(player, type, lists);
+    ov.remove();
+    if (onDone) onDone(type);
+  });
 }
 
 function openPlayersModal() {
@@ -1680,8 +1812,7 @@ function openPlayersModal() {
 
   function renderList() {
     const q = $('#pl-search', ov).value.trim().toLowerCase();
-    const players = allPlayers().filter(p =>
-      !q || [p.name, p.insta, p.email, p.phone].some(v => (v || '').toLowerCase().includes(q)));
+    const players = allPlayers().filter(p => matchesQuery([p.name, p.insta, p.email, p.phone], q));
     $('#pl-title', ov).textContent = t('playersTitle', { n: players.length });
     $('#pl-list', ov).innerHTML = players.map((p, i) => `
       <div class="entry player-row">
@@ -1698,13 +1829,10 @@ function openPlayersModal() {
           ? (p.battlePass ? `<span class="chip chip-pass">${esc(p.battlePass.toUpperCase())}</span>` : '')
           : `<button class="btn btn-tiny ${p.battlePass ? 'btn-exec' : 'btn-ghost'}" data-pass="${i}" title="${esc(t('battlePassLbl'))}">${esc(p.battlePass ? 'PASS ' + p.battlePass.toUpperCase() : 'PASS')}</button>`}
       </div>`).join('') || `<p class="hint">${esc(t('noMatches'))}</p>`;
-    // Tap the PASS button to cycle: none -> 2h -> 4h -> none.
-    $$('[data-pass]', ov).forEach(b => b.addEventListener('click', async () => {
+    // Tap PASS to set the pass and the level the player's spot is held in.
+    $$('[data-pass]', ov).forEach(b => b.addEventListener('click', () => {
       const p = players[+b.dataset.pass];
-      const next = p.battlePass === '2h' ? '4h' : p.battlePass === '4h' ? null : '2h';
-      await setBattlePass(p, next);
-      p.battlePass = next;
-      renderList();
+      openPassModal(p, (type) => { p.battlePass = type; renderList(); });
     }));
   }
   $('#pl-search', ov).addEventListener('input', renderList);
@@ -1720,6 +1848,69 @@ function openPlayersModal() {
     URL.revokeObjectURL(a.href);
   });
   renderList();
+}
+
+/*
+ * Find one person on a night with nine lists and a couple of hundred names.
+ *
+ * Scrolling for a name at the door is the single most common thing an exec
+ * does, so this searches every list at once and opens the same row controls
+ * — paid, checked in, team, move, remove — straight from the result.
+ */
+/* Accent- and case-blind "does this record contain what they typed". */
+function matchesQuery(fields, q) {
+  const needle = normalize(q);
+  if (!needle) return true;
+  return fields.some(v => normalize(v).includes(needle));
+}
+
+function openFindModal(ev) {
+  const covered = coveredSignupIds(ev);
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('findTitle'))}</h2>
+      <input class="input" id="fp-q" placeholder="${esc(t('findPh'))}" autocomplete="off">
+      <div class="summary-list" id="fp-list"></div>
+      <button class="btn btn-ghost wide" data-close>${esc(t('close'))}</button>
+    </div>`, { wide: true });
+
+  function paint() {
+    const q = $('#fp-q', ov).value.trim().toLowerCase();
+    const rows = !q ? [] : eventSignups(ev.id).filter(su =>
+      matchesQuery([su.name, su.insta, su.email, su.phone], q));
+    $('#fp-list', ov).innerHTML = !q
+      ? `<p class="hint">${esc(t('findEmpty'))}</p>`
+      : (rows.map(su => {
+          const l = listById(ev, su.listId);
+          const sess = l ? sessionById(ev, l.sessionId) : null;
+          const entries = listEntries(ev.id, su.listId);
+          const pos = entries.findIndex(e => e.id === su.id);
+          const waiting = pos >= (l?.cap || 0);
+          const paid = su.paid || covered.has(su.id);
+          return `
+          <div class="entry find-row" data-find="${esc(su.id)}">
+            ${avatarHtml(su, 'avatar-sm')}
+            <div class="grow entry-name">
+              <span>${esc(su.name)}</span>
+              <small>
+                ${esc(SPORTS[l?.sport]?.label || '')} ${esc(l?.label || '?')}${sess ? ' · ' + esc(sess.label) : ''}
+                · ${esc(waiting ? t('onWaitlist', { n: pos - (l?.cap || 0) + 1 }) : t('confirmedSpot'))}
+                ${su.email ? ' · ' + esc(su.email) : ''}${su.phone ? ' · ' + esc(su.phone) : ''}
+              </small>
+            </div>
+            ${su.viaPass ? `<span class="chip chip-pass-off">${esc(t('heldChip'))}</span>` : ''}
+            <span class="chip ${paid ? 'chip-paid' : 'chip-unpaid'}">${esc(paid ? t('paidChip') : t('unpaidChip'))}</span>
+            <span class="chip ${su.checkedIn ? 'chip-in-ok' : 'chip-muted'}">${esc(su.checkedIn ? t('inChip') : t('outChip'))}</span>
+          </div>`;
+        }).join('') || `<p class="hint">${esc(t('noMatches'))}</p>`);
+    $$('[data-find]', ov).forEach(row => row.addEventListener('click', () => {
+      const su = eventSignups(ev.id).find(x => x.id === row.dataset.find);
+      if (su) { ov.remove(); openPlayerAdminModal(ev, su); }
+    }));
+  }
+  $('#fp-q', ov).addEventListener('input', paint);
+  paint();
+  $('#fp-q', ov).focus();
 }
 
 /* ================================================================== */
@@ -1768,6 +1959,29 @@ async function runAutoMatch() {
   if (!events.length) return;
 
   for (const pay of pending) {
+    // A test transfer proves the plumbing and nothing else: it is shown on
+    // the Payments screen with everything the club parsed out of it, and no
+    // player is touched.
+    if (isTestTransfer(pay, state.settings)) continue;
+
+    // Season passes are bought outright, often weeks before the player signs
+    // up for anything, so they are matched against the whole player registry
+    // rather than one night's unpaid list.
+    const pass = passPurchase(pay, state.settings);
+    if (pass) {
+      const who = nameHits((pay.sender || '') + ' ' + (pay.message || ''), allPlayers());
+      const top = who.length === 1 ? who[0].person : null;
+      if (top && !top.deviceId.startsWith('name:')) {
+        await setBattlePass(top, pass, passLists(state.players[top.deviceId]));
+        await store.updatePayment(pay.id, {
+          matched: true, matchedTo: top.name, auto: true,
+          matchedAt: Date.now(), kind: 'pass',
+        });
+        toast(t('passAutoToast', { name: top.name, type: pass.toUpperCase() }));
+      }
+      continue;   // never spend a pass payment on a single night's game fee
+    }
+
     const hits = [];
     for (const ev of events) {
       const res = resolvePayment(pay, unpaidFor(ev));
@@ -1805,7 +2019,7 @@ function openSummaryModal(ev) {
   const unpaid = people.filter(p => !p.paid);
   const collected = people.reduce((a, p) => a + (p.paidAmount || 0), 0);
   const outstanding = unpaid.reduce((a, p) => a + p.total, 0);
-  const pays = (state.payments || []).filter(p => !p.matched);
+  const pays = (state.payments || []).filter(p => !p.matched && !isTestTransfer(p, state.settings));
   const ov = openModal(`
     <div class="modal-body">
       <h2>${esc(t('paymentsTitle', { date: fmtDate(ev.date) }))}</h2>
@@ -1837,6 +2051,23 @@ function openSummaryModal(ev) {
             </div>`;
           }).join('')}
         </div>` : ''}
+      ${(() => {
+        const tests = (state.payments || []).filter(p => !p.matched && isTestTransfer(p, state.settings));
+        if (!tests.length) return '';
+        return `
+        <h3 class="section-sub">${esc(t('testTitle'))}</h3>
+        <div class="summary-list">
+          ${tests.map(p => `
+            <div class="entry" data-test="${esc(p.id)}">
+              <div class="grow entry-name">
+                <span>${esc(t('testOk'))}</span>
+                <small>${esc(t('testFrom', { sender: p.sender || '?', amount: fmtMoney(p.amount || 0) }))}${p.message ? ' · ' + esc(t('transferNote', { note: p.message })) : ''}</small>
+              </div>
+              <button class="btn btn-small btn-ghost" data-test-x>\u2715</button>
+            </div>`).join('')}
+        </div>
+        <p class="hint">${esc(t('testNote', { amount: fmtMoney(state.settings.testAmount) }))}</p>`;
+      })()}
       ${(() => {
         const autos = (state.payments || [])
           .filter(p => p.auto && p.matchedEvent === ev.id)
@@ -1908,6 +2139,13 @@ function openSummaryModal(ev) {
     $('[data-match-x]', row).addEventListener('click', async () => {
       await store.updatePayment(pay.id, { matched: true, matchedTo: '' });
       toast(t('dismissedToast'));
+      row.remove();
+    });
+  });
+
+  $$('[data-test]', ov).forEach(row => {
+    $('[data-test-x]', row).addEventListener('click', async () => {
+      await store.updatePayment(row.dataset.test, { matched: true, matchedTo: '', kind: 'test' });
       row.remove();
     });
   });
@@ -2113,6 +2351,8 @@ function openSettingsModal() {
         <textarea class="input" id="cs-bpnote" rows="3">${esc(s.battlePassNote || '')}</textarea>
         <label class="field-label">${esc(t('policiesLbl'))}</label>
         <textarea class="input" id="cs-policies" rows="6">${esc((s.policies || []).join('\n'))}</textarea>
+        <label class="field-label">${esc(t('policiesUrlLbl'))}</label>
+        <input class="input" id="cs-policies-url" value="${esc(s.policiesUrl || '')}" placeholder="https://">
       </div>
       <div class="row gap">
         <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
@@ -2131,6 +2371,7 @@ function openSettingsModal() {
       signupOpenDaysBefore: parseFloat($('#cs-openahead', ov).value) || 0,
       battlePassNote: $('#cs-bpnote', ov).value.trim(),
       policies: $('#cs-policies', ov).value.split('\n').map(x => x.trim()).filter(Boolean),
+      policiesUrl: $('#cs-policies-url', ov).value.trim(),
     });
     ov.remove();
     toast(t('settingsSaved'));

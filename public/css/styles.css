@@ -426,6 +426,25 @@ select.input { appearance: auto; }
  * so it stays readable rather than shrinking into the metadata. */
 .pay-note { margin: 0; font-size: 13px; color: #6b6152; overflow-wrap: anywhere; }
 
+/* A level label never pushes the sport name onto its own line: the two read
+ * as one title, and "Adv + Men" must sit beside "Volleyball", not under it. */
+.list-head { flex-wrap: nowrap; }
+.list-head .list-level { text-align: right; white-space: nowrap; }
+
+/* Season pass: choosing which list a held spot lives in. */
+.pass-lists { display: flex; flex-direction: column; gap: 10px; }
+.pass-sess { display: flex; flex-direction: column; gap: 4px; }
+.pass-opt { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+.pass-opt input { width: 17px; height: 17px; flex: none; }
+
+/* A search result is a shortcut to the row's controls, so it reads as one. */
+.find-row { cursor: pointer; }
+.find-row:hover { background: #f6f0e2; }
+
+/* The club's full rules — quiet, but never more than one tap away. */
+.policies-link { display: inline-block; margin-top: 10px; font-weight: 700; color: #8a5a1c; text-decoration: none; }
+.policies-link:hover { text-decoration: underline; }
+
 /* event editor */
 .ee-list { border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-bottom: 8px; background: #fff; display: flex; flex-direction: column; gap: 8px; }
 .ee-cols { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-soft); }

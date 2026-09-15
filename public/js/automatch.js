@@ -81,6 +81,31 @@ function ambiguous(hits) {
 }
 
 /*
+ * Is this transfer buying a season pass rather than paying for a game?
+ *
+ * The pass amounts are deliberately nothing like a game price ($135 / $75
+ * against $8 / $10), so the amount alone identifies the intent. Returns the
+ * pass type, or null.
+ */
+export function passPurchase(payment, settings) {
+  const amount = cents(payment.amount);
+  if (amount === cents(settings.passPrice4h)) return '4h';
+  if (amount === cents(settings.passPrice2h)) return '2h';
+  return null;
+}
+
+/*
+ * A transfer sent purely to prove the plumbing works. It is never treated as
+ * payment for anything — it exists so the club can watch a real e-transfer
+ * travel from Gmail to the Payments screen without moving real money or
+ * marking a real player paid.
+ */
+export function isTestTransfer(payment, settings) {
+  const test = cents(settings.testAmount);
+  return test > 0 && cents(payment.amount) === test;
+}
+
+/*
  * Decide what a single received transfer means for one event's unpaid list.
  *
  * Returns one of:
