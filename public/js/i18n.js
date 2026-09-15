@@ -279,8 +279,8 @@ const STRINGS = {
   /* emails (rendered in the recipient's language) */
   emailConfSubject: ['CRSC — You\'re signed up for {date}', 'CRSC — Inscription confirmée : {date}'],
   emailConfBody: [
-    'Hey {name}!\n\nYou\'re on the list for {date}:\n{lists}\n\n{payLine}\n{late}\n\nWhere: {location}\n\nWhen you arrive at the gym, open the sign-up page and tap "I\'m here" to check in.\n\nCan\'t make it? Please remove your name on the sign-up page so someone on the waitlist can take your spot.\n\n— {club}',
-    'Salut {name}!\n\nVous êtes inscrit pour le {date} :\n{lists}\n\n{payLine}\n{late}\n\nOù : {location}\n\nEn arrivant au gymnase, ouvrez la page d\'inscription et touchez « Je suis là » pour confirmer votre présence.\n\nVous ne pouvez plus venir? Retirez votre nom sur la page d\'inscription pour libérer votre place.\n\n— {club}',
+    'Hey {name}!\n\nYou\'re on the list for {date}:\n{lists}\n\n{payLine}\n{late}\n\nWhere: {location}\n\nCan\'t make it? Please remove your name on the sign-up page so someone on the waitlist can take your spot.\n\n— {club}',
+    'Salut {name}!\n\nVous êtes inscrit pour le {date} :\n{lists}\n\n{payLine}\n{late}\n\nOù : {location}\n\nVous ne pouvez plus venir? Retirez votre nom sur la page d\'inscription pour libérer votre place.\n\n— {club}',
   ],
   emailRemSubject: ['CRSC — Payment reminder for {date}', 'CRSC — Rappel de paiement : {date}'],
   emailRemBody: [
