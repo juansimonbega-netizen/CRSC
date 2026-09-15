@@ -35,17 +35,26 @@ var TEST_AMOUNT = 1;
 var PASS_4H = 135;
 var PASS_2H = 75;
 
+/*
+ * Banks do not agree on how to word a transfer notification. The sender may
+ * be Interac itself or the member's own bank; the subject may name the sender
+ * before "sent you", after "from", or not at all. Real notifications arriving
+ * in the club's inbox were matched by none of the original patterns, so the
+ * search is deliberately wide and the sender is looked for in several shapes
+ * before giving up — an unrecognised email costs a person being marked unpaid
+ * when they have paid, which is the expensive direction to fail.
+ */
 function checkTransfers() {
-  var threads = GmailApp.search('from:(interac.ca) newer_than:3d');
+  var threads = GmailApp.search(
+    'newer_than:7d (from:(interac.ca) OR from:(payments.interac.ca) OR ' +
+    'subject:(interac) OR subject:(virement) OR subject:("e-transfer") OR ' +
+    'subject:("sent you money") OR subject:("vous a envoyé"))');
   threads.forEach(function (thread) {
     thread.getMessages().forEach(function (msg) {
       var subject = msg.getSubject() || '';
-      // English + French Interac notification subjects.
-      var m = subject.match(/INTERAC e-Transfer:\s*(.+?)\s+sent you/i)
-           || subject.match(/Virement INTERAC\s*:\s*(.+?)\s+vous a envoy/i);
-      if (!m) return;
-      var sender = m[1].trim();
       var body = msg.getPlainBody() || '';
+      var sender = findSender(subject, body);
+      if (!sender) return;
       var amt = body.match(/\$\s*([\d,]+(?:[.,]\d{2})?)/);
       var amount = amt ? parseFloat(amt[1].replace(',', '.').replace(/\.(?=.*\.)/g, '')) : 0;
       record(msg.getId(), sender, amount, message(body), msg.getDate());
@@ -61,6 +70,36 @@ function checkTransfers() {
  * "Message :" in French, sometimes with the sender's name in between. Capped
  * well short of a paragraph — it is read for names, not stored as mail.
  */
+/*
+ * Who sent the money. Tried against the subject first, then the body, in the
+ * wordings Canadian banks actually use in English and French.
+ */
+function findSender(subject, body) {
+  var patterns = [
+    /INTERAC e-Transfer:?\s*(.+?)\s+sent you/i,
+    /Virement INTERAC\s*:?\s*(.+?)\s+vous a envoy/i,
+    /^(.+?)\s+sent you (?:money|\$)/i,
+    /(.+?)\s+vous a envoyé/i,
+    /money from\s+(.+?)(?:\s+has|\s*[.!,]|$)/i,
+    /argent de\s+(.+?)(?:\s*[.!,]|$)/i,
+    /transfer from\s+(.+?)(?:\s*[.!,]|$)/i,
+    /de la part de\s+(.+?)(?:\s*[.!,]|$)/i,
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var m = subject.match(patterns[i]) || body.match(patterns[i]);
+    if (m && m[1]) {
+      var name = m[1].replace(/["'\u201c\u201d]/g, '').trim();
+      // A greedy capture runs past the name into the rest of the sentence
+      // ("Rayan Sedraoui was auto-deposited"), so cut it at the first word
+      // that can only be the sentence continuing, not part of a name.
+      name = name.split(/\s+(?:was|has|have|is|a été|vous|to|into|on|for|and|et)\b/i)[0].trim();
+      // A plausible human name, not a stray sentence fragment.
+      if (name.length >= 2 && name.length <= 60 && !/\d{3}/.test(name)) return name;
+    }
+  }
+  return '';
+}
+
 function message(body) {
   var m = body.match(/Message(?:\s+(?:from|de)\s+[^:]{0,60})?\s*:\s*(.+)/i);
   return m ? m[1].trim().slice(0, 200) : '';
