@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#ee8a1e"/>
-  <circle cx="256" cy="196" r="98" fill="#fffdf7"/>
-  <path d="M158 196a98 98 0 0 1 196 0" fill="none" stroke="#1d1a14" stroke-width="10"/>
-  <path d="M256 98v196M166 148c60 40 120 40 180 0M166 244c60-40 120-40 180 0" fill="none" stroke="#1d1a14" stroke-width="10"/>
-  <text x="256" y="436" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="132" font-weight="bold" letter-spacing="6" fill="#1d1a14">CRSC</text>
-</svg>
