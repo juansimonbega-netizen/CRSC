@@ -112,6 +112,31 @@ const STRINGS = {
   policiesLink: ['Read the full Policies & FAQ \u2192', 'Lire les politiques et la FAQ \u2192'],
   policiesUrlLbl: ['Policies & FAQ link', 'Lien des politiques et FAQ'],
 
+  // Money owed across the season, and no-shows
+  ledgerBtn: ['Money owed', 'Sommes dues'],
+  ledgerTitle: ['Money owed & no-shows', 'Sommes dues et absences'],
+  peopleOwing: ['people owing', 'personnes qui doivent'],
+  repeatNoShows: ['repeat no-shows', 'absences répétées'],
+  whoOwes: ['Who owes ({n})', 'Qui doit ({n})'],
+  owesAmount: ['owes {amount}', 'doit {amount}'],
+  nobodyOwes: ['Nobody owes anything. Everyone is square.', 'Personne ne doit rien. Tout est réglé.'],
+  noShowChip: ['{n} no-show(s)', '{n} absence(s)'],
+  noShowsTitle: ['Repeat no-shows ({n})', 'Absences répétées ({n})'],
+  noShowNote: ['Had a confirmed spot on a past Saturday and never checked in — a spot somebody on the waitlist could have used. Waitlisted players are never counted here.', 'Avaient une place confirmée un samedi passé sans jamais se présenter — une place qu\u2019un joueur en liste d\u2019attente aurait pu prendre. Les joueurs en attente ne sont jamais comptés ici.'],
+  chaseAll: ['Email all {n} of them', 'Envoyer un courriel aux {n}'],
+  chaseNote: ['Each person gets their own email with their own total — nobody is told what anyone else owes.', 'Chacun reçoit son propre courriel avec son propre total — personne n\u2019apprend ce que les autres doivent.'],
+  chaseConfirm: ['Email {n} people about the {total} they owe?', 'Envoyer un courriel à {n} personnes au sujet des {total} dus?'],
+  sendThem: ['Send', 'Envoyer'],
+  chaseSent: ['{n} reminder(s) sent', '{n} rappel(s) envoyé(s)'],
+  noEmails: ['None of them have an email on file', 'Aucun n\u2019a de courriel enregistré'],
+  mailerOff: ['Club email not connected', 'Courriel du club non connecté'],
+  exportLedger: ['Export CSV', 'Exporter (CSV)'],
+  emailOwedSubject: ['CRSC — Your outstanding balance', 'CRSC — Votre solde à payer'],
+  emailOwedBody: [
+    'Hey {name}!\n\nOur records show {total} still owing for CRSC:\n\n{nights}\n\nTo settle up, send an Interac e-transfer to {email} and put your name in the message.\n\nAlready paid? Let an exec know and we\u2019ll fix our records — no problem.\n\nThanks for playing with us!\n\n\u2014 {club}',
+    'Salut {name}!\n\nNos registres indiquent {total} à payer au CRSC :\n\n{nights}\n\nPour régler, envoyez un virement Interac à {email} en indiquant votre nom dans le message.\n\nDéjà payé? Dites-le à un exec et nous corrigerons nos registres — aucun souci.\n\nMerci de jouer avec nous!\n\n\u2014 {club}',
+  ],
+
   /* cancellation lock + late fee */
   cancelLocked: ['Cancellations are closed for this event — message an exec if you can\'t make it.', 'Les annulations sont fermées pour cet événement — écrivez à un exec si vous ne pouvez pas venir.'],
   lateFee: ['incl. late fee', 'incl. frais de retard'],
@@ -198,6 +223,31 @@ const STRINGS = {
   // Policies
   policiesLink: ['Read the full Policies & FAQ \u2192', 'Lire les politiques et la FAQ \u2192'],
   policiesUrlLbl: ['Policies & FAQ link', 'Lien des politiques et FAQ'],
+
+  // Money owed across the season, and no-shows
+  ledgerBtn: ['Money owed', 'Sommes dues'],
+  ledgerTitle: ['Money owed & no-shows', 'Sommes dues et absences'],
+  peopleOwing: ['people owing', 'personnes qui doivent'],
+  repeatNoShows: ['repeat no-shows', 'absences répétées'],
+  whoOwes: ['Who owes ({n})', 'Qui doit ({n})'],
+  owesAmount: ['owes {amount}', 'doit {amount}'],
+  nobodyOwes: ['Nobody owes anything. Everyone is square.', 'Personne ne doit rien. Tout est réglé.'],
+  noShowChip: ['{n} no-show(s)', '{n} absence(s)'],
+  noShowsTitle: ['Repeat no-shows ({n})', 'Absences répétées ({n})'],
+  noShowNote: ['Had a confirmed spot on a past Saturday and never checked in — a spot somebody on the waitlist could have used. Waitlisted players are never counted here.', 'Avaient une place confirmée un samedi passé sans jamais se présenter — une place qu\u2019un joueur en liste d\u2019attente aurait pu prendre. Les joueurs en attente ne sont jamais comptés ici.'],
+  chaseAll: ['Email all {n} of them', 'Envoyer un courriel aux {n}'],
+  chaseNote: ['Each person gets their own email with their own total — nobody is told what anyone else owes.', 'Chacun reçoit son propre courriel avec son propre total — personne n\u2019apprend ce que les autres doivent.'],
+  chaseConfirm: ['Email {n} people about the {total} they owe?', 'Envoyer un courriel à {n} personnes au sujet des {total} dus?'],
+  sendThem: ['Send', 'Envoyer'],
+  chaseSent: ['{n} reminder(s) sent', '{n} rappel(s) envoyé(s)'],
+  noEmails: ['None of them have an email on file', 'Aucun n\u2019a de courriel enregistré'],
+  mailerOff: ['Club email not connected', 'Courriel du club non connecté'],
+  exportLedger: ['Export CSV', 'Exporter (CSV)'],
+  emailOwedSubject: ['CRSC — Your outstanding balance', 'CRSC — Votre solde à payer'],
+  emailOwedBody: [
+    'Hey {name}!\n\nOur records show {total} still owing for CRSC:\n\n{nights}\n\nTo settle up, send an Interac e-transfer to {email} and put your name in the message.\n\nAlready paid? Let an exec know and we\u2019ll fix our records — no problem.\n\nThanks for playing with us!\n\n\u2014 {club}',
+    'Salut {name}!\n\nNos registres indiquent {total} à payer au CRSC :\n\n{nights}\n\nPour régler, envoyez un virement Interac à {email} en indiquant votre nom dans le message.\n\nDéjà payé? Dites-le à un exec et nous corrigerons nos registres — aucun souci.\n\nMerci de jouer avec nous!\n\n\u2014 {club}',
+  ],
   selfCheckedInToast: ['You\'re checked in — have a good game!', 'Présence confirmée — bonne partie!'],
   selfCheckOutToast: ['Check-in removed', 'Présence annulée'],
 

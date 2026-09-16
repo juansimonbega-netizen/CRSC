@@ -470,6 +470,9 @@ select.input { appearance: auto; }
 .entry .chip { flex: none; white-space: nowrap; }
 .entry-name { overflow: hidden; }
 .entry-name span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A chip sitting beside a name is a label ON it, not a bar under it: the
+ * block rule above would otherwise stretch it across the whole row. */
+.entry-name .chip { display: inline-flex; width: auto; vertical-align: middle; }
 .chip-pass-off { background: transparent; border: 1px solid var(--ink); color: var(--ink); }
 
 /* personal transfer link */

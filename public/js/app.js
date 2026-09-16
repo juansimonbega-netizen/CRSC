@@ -358,8 +358,22 @@ function personKey(s) {
   return s.deviceId !== 'exec-added' && s.deviceId ? s.deviceId + '|' + s.name.toLowerCase() : 'name|' + s.name.toLowerCase();
 }
 
+/*
+ * The sign-ups that actually hold a place, as opposed to sitting on the
+ * waitlist. Nobody owes for a spot they never got.
+ */
+function confirmedSignupIds(ev) {
+  const set = new Set();
+  for (const l of ev.lists || []) {
+    const { confirmed } = splitByCap(listEntries(ev.id, l.id), l.cap || 0);
+    confirmed.forEach(su => set.add(su.id));
+  }
+  return set;
+}
+
 function personTotals(ev) {
   const covered = coveredSignupIds(ev);
+  const held = confirmedSignupIds(ev);
   const persons = {};
   for (const su of eventSignups(ev.id)) {
     const k = personKey(su);
@@ -375,10 +389,13 @@ function personTotals(ev) {
     // The pass is already accounted for by coveredSignupIds, so the
     // remaining spots are priced without it.
     const settled = p.signups.filter(x => x.paid && !covered.has(x.id));
-    const owing = p.signups.filter(x => !x.paid && !covered.has(x.id));
+    // A waitlisted name is not a debt. They never got on the court, so they
+    // are not billed, not reminded, and not chased — and their spot is not
+    // counted in what the club is owed.
+    const owing = p.signups.filter(x => !x.paid && !covered.has(x.id) && held.has(x.id));
     const { total: paidAmount } = computePrice(ev, settled.map(x => x.listId), p.method, null);
     let { total } = computePrice(ev, owing.map(x => x.listId), p.method, null);
-    const paid = owing.length === 0;
+    const paid = owing.length === 0;   // nothing owed: settled, covered, or waitlisted
     // Automatic late fee once the Saturday has passed and they still owe.
     const late = isPastEvent(ev) && !paid && total > 0;
     if (late) total += parseFloat(state.settings.lateFeeAmount) || 0;
@@ -1070,6 +1087,7 @@ function renderHome() {
           <button class="btn btn-primary" id="btn-new-event">${esc(t('newEvent'))}</button>
           ${state.events.length ? `<button class="btn btn-ghost" id="btn-season">${esc(t('openSeason'))}</button>` : ''}
           <button class="btn btn-ghost" id="btn-players">${esc(t('playersBtn'))}</button>
+          <button class="btn btn-ghost" id="btn-ledger">${esc(t('ledgerBtn'))}</button>
           <button class="btn btn-ghost" id="btn-settings">${esc(t('clubSettings'))}</button>
           ${store.mode === 'demo' ? `<button class="btn btn-ghost" id="btn-reset-demo">${esc(t('resetDemo'))}</button>` : ''}
         </div>
@@ -1090,6 +1108,7 @@ function renderHome() {
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
+  $('#btn-ledger')?.addEventListener('click', openLedgerModal);
   $('#btn-settings')?.addEventListener('click', openSettingsModal);
   $('#btn-reset-demo')?.addEventListener('click', async () => {
     if (await confirmModal(t('resetDemoConfirm'))) {
@@ -1756,6 +1775,151 @@ function openExecAddModal(ev, listId) {
  * game history from the loaded events. People who signed up on someone
  * else's phone or were added by an exec appear too, via their signups.
  */
+/*
+ * What the club is owed, and who never showed up — across the whole season.
+ *
+ * Both were invisible before this. Outstanding money was only ever totalled
+ * one night at a time, so somebody who plays six Saturdays and pays for none
+ * of them appeared as a small number on six separate screens and never as
+ * "$48". And a no-show left no mark at all: the removal log catches people
+ * who take their name off, but the commoner case — name on the list, never
+ * turned up, never paid — was recorded and never read.
+ *
+ * A no-show only counts against a CONFIRMED spot. Someone who sat on the
+ * waitlist and did not play was never given a place to waste.
+ */
+function seasonLedger() {
+  const by = {};
+  const person = (key, p) => {
+    if (!by[key]) by[key] = {
+      key, name: p.name, email: '', deviceId: p.deviceId,
+      owed: 0, nights: [], noShows: [], games: 0,
+    };
+    return by[key];
+  };
+
+  for (const ev of state.events) {
+    if (!state.signups[ev.id]) continue;      // week not loaded on this device
+    const past = isPastEvent(ev);
+    const confirmed = confirmedSignupIds(ev);
+    for (const p of personTotals(ev)) {
+      const rec = person(personKey(p.signups[0]), p);
+      if (!rec.email) rec.email = p.signups.find(su => su.email)?.email || '';
+      if (past) rec.games++;
+      if (!p.paid && p.total > 0) {
+        rec.owed += p.total;
+        rec.nights.push({ id: ev.id, date: ev.date, amount: p.total, late: p.late });
+      }
+      // Held a spot on a night that has been and gone, never checked in.
+      if (past && p.signups.some(su => confirmed.has(su.id)) && !p.checkedIn) {
+        rec.noShows.push({ id: ev.id, date: ev.date, paid: p.paid });
+      }
+    }
+  }
+  return Object.values(by)
+    .filter(r => r.owed > 0 || r.noShows.length)
+    .sort((a, b) => b.owed - a.owed || b.noShows.length - a.noShows.length);
+}
+
+/*
+ * The money screen: everyone who owes, most first, plus repeat no-shows.
+ * The club's founding problem was that nobody could answer "who owes us
+ * what" — so that number is the first thing on the page.
+ */
+function openLedgerModal() {
+  const rows = seasonLedger();
+  const debtors = rows.filter(r => r.owed > 0);
+  const total = debtors.reduce((a, r) => a + r.owed, 0);
+  const ghosts = rows.filter(r => r.noShows.length >= 2);
+
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('ledgerTitle'))}</h2>
+      <div class="stat-row">
+        <div class="stat stat-bad"><strong>${fmtMoney(total)}</strong><span>${esc(t('outstanding'))}</span></div>
+        <div class="stat"><strong>${debtors.length}</strong><span>${esc(t('peopleOwing'))}</span></div>
+        <div class="stat ${ghosts.length ? 'stat-bad' : ''}"><strong>${ghosts.length}</strong><span>${esc(t('repeatNoShows'))}</span></div>
+      </div>
+      ${debtors.length ? `
+        <h3 class="section-sub">${esc(t('whoOwes', { n: debtors.length }))}</h3>
+        <div class="summary-list">
+          ${debtors.map(r => `
+            <div class="entry">
+              <div class="grow entry-name">
+                <span>${esc(r.name)}${r.noShows.length ? ` <span class="chip chip-flag">${esc(t('noShowChip', { n: r.noShows.length }))}</span>` : ''}</span>
+                <small>
+                  ${r.nights.map(n => esc(fmtDate(n.date)) + (n.late ? ' ⚠' : '')).join(' · ')}
+                  ${r.email ? ' · ' + esc(r.email) : ' · ' + esc(t('noEmail'))}
+                </small>
+              </div>
+              <span class="chip chip-unpaid">${fmtMoney(r.owed)}</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn btn-warn wide" id="lg-chase" ${mailerConfigured() ? '' : 'disabled'}>
+          ${esc(mailerConfigured() ? t('chaseAll', { n: debtors.filter(r => r.email).length }) : t('mailerOff'))}
+        </button>
+        <p class="hint">${esc(t('chaseNote'))}</p>`
+      : `<p class="hint">${esc(t('nobodyOwes'))}</p>`}
+      ${ghosts.length ? `
+        <h3 class="section-sub">${esc(t('noShowsTitle', { n: ghosts.length }))}</h3>
+        <div class="summary-list">
+          ${ghosts.map(r => `
+            <div class="entry">
+              <div class="grow entry-name">
+                <span>${esc(r.name)}</span>
+                <small>${r.noShows.map(n => esc(fmtDate(n.date))).join(' · ')}</small>
+              </div>
+              <span class="chip chip-flag">${esc(t('noShowChip', { n: r.noShows.length }))}</span>
+            </div>`).join('')}
+        </div>
+        <p class="hint">${esc(t('noShowNote'))}</p>` : ''}
+      <div class="row gap">
+        <button class="btn btn-ghost grow" id="lg-csv">${esc(t('exportLedger'))}</button>
+        <button class="btn btn-primary grow" data-close>${esc(t('close'))}</button>
+      </div>
+    </div>`, { wide: true });
+
+  // One email each, with that person's own total — never a group mail-out
+  // that tells everybody what everybody else owes.
+  $('#lg-chase', ov)?.addEventListener('click', async () => {
+    const targets = debtors.filter(r => r.email);
+    if (!targets.length) { toast(t('noEmails'), 'err'); return; }
+    if (!await confirmModal(t('chaseConfirm', { n: targets.length, total: fmtMoney(total) }), t('sendThem'))) return;
+    let sent = 0;
+    for (const r of targets) {
+      const lang = 'en';
+      try {
+        await sendMail({
+          to: r.email,
+          subject: tLang(lang, 'emailOwedSubject'),
+          message: tLang(lang, 'emailOwedBody', {
+            name: r.name,
+            total: fmtMoney(r.owed),
+            nights: r.nights.map(n => '• ' + fmtDateLang(n.date, lang) + ' — ' + fmtMoney(n.amount)).join('\n'),
+            email: state.settings.etransferEmail || '',
+            club: state.settings.clubFullName || 'CRSC',
+          }),
+        });
+        sent++;
+      } catch (err) { console.error('chase email', err); }
+    }
+    toast(t('chaseSent', { n: sent }));
+  });
+
+  $('#lg-csv', ov).addEventListener('click', () => {
+    const out = [['Name', 'Email', 'Owes', 'Unpaid nights', 'No-shows', 'No-show dates']];
+    for (const r of rows) out.push([r.name, r.email, r.owed,
+      r.nights.map(n => n.date).join(' '), r.noShows.length, r.noShows.map(n => n.date).join(' ')]);
+    const csv = out.map(x => x.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'crsc-owed.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
 function allPlayers() {
   const byId = {};
   for (const p of Object.values(state.players || {})) {
@@ -1773,6 +1937,12 @@ function allPlayers() {
       if (!byId[key].email && su.email) byId[key].email = su.email;
       if (!byId[key].photo && su.photo) byId[key].photo = su.photo;
     }
+  }
+  // No-shows and money owed come from the season ledger, so the directory
+  // and the money screen can never tell an exec two different stories.
+  for (const r of seasonLedger()) {
+    const rec = byId[r.deviceId] || Object.values(byId).find(p => p.name === r.name);
+    if (rec) { rec.noShows = r.noShows.length; rec.owes = r.owed; }
   }
   // Removal history (the proof trail) follows the player too.
   for (const r of state.removals || []) {
@@ -1892,8 +2062,11 @@ function openPlayersModal() {
             ${p.insta ? '@' + esc(p.insta) + ' · ' : ''}${esc(p.email || '')}${p.phone ? ' · ' + esc(p.phone) : ''}
           </small>
         </div>
+        ${p.noShows >= 2 ? `<span class="chip chip-flag">${esc(t('noShowChip', { n: p.noShows }))}</span>` : ''}
         ${p.flagged ? `<span class="chip chip-flag">${esc(t('flaggedRemovals', { n: p.flagged }))}</span>` : (p.removals ? `<span class="chip chip-muted">${esc(t('removalsCount', { n: p.removals }))}</span>` : '')}
-        ${p.unpaid ? `<span class="chip chip-unpaid">${esc(t('unpaidCount', { n: p.unpaid }))}</span>` : `<span class="chip ${p.games ? 'chip-mine' : 'chip-muted'}">${esc(p.games ? t('gamesPlayed', { n: p.games }) : t('neverPlayed'))}</span>`}
+        ${p.owes ? `<span class="chip chip-unpaid">${esc(t('owesAmount', { amount: fmtMoney(p.owes) }))}</span>`
+          : p.unpaid ? `<span class="chip chip-unpaid">${esc(t('unpaidCount', { n: p.unpaid }))}</span>`
+          : `<span class="chip ${p.games ? 'chip-mine' : 'chip-muted'}">${esc(p.games ? t('gamesPlayed', { n: p.games }) : t('neverPlayed'))}</span>`}
         ${p.deviceId.startsWith('name:')
           ? (p.battlePass ? `<span class="chip chip-pass">${esc(p.battlePass.toUpperCase())}</span>` : '')
           : `<button class="btn btn-tiny ${p.battlePass ? 'btn-exec' : 'btn-ghost'}" data-pass="${i}" title="${esc(t('battlePassLbl'))}">${esc(p.battlePass ? 'PASS ' + p.battlePass.toUpperCase() : 'PASS')}</button>`}
