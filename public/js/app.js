@@ -1685,6 +1685,11 @@ function openPlayerAdminModal(ev, su) {
         </div>`;
       })() : ''}
       ${su.deviceId && su.deviceId !== 'exec-added' ? `
+        <label class="field-label">${esc(t('levelLbl'))}</label>
+        <div class="row gap wrap" id="pa-level">
+          <button class="btn btn-small grow" data-level="" title="${esc(t('noLevel'))}">—</button>
+          ${LEVELS.map(l => `<button class="btn btn-small grow" data-level="${l.rank}" title="${esc(l.label)}">${esc(l.short)}</button>`).join('')}
+        </div>
         <label class="field-label">${esc(t('battlePassLbl'))}</label>
         <button class="btn btn-small wide ${playerPass(su.deviceId) ? 'btn-exec' : 'btn-ghost'}" id="pa-pass">
           ${esc(playerPass(su.deviceId) ? t('passSetTo', { type: playerPass(su.deviceId).toUpperCase() }) : t('setPass'))}
@@ -1738,6 +1743,17 @@ function openPlayerAdminModal(ev, su) {
       x.className = `btn btn-small ${(+x.dataset.team || null) === n ? 'btn-exec' : 'btn-ghost'}`;
     });
   }));
+  const paintLevel = () => {
+    const now = playerLevel(su.deviceId);
+    $$('#pa-level [data-level]', ov).forEach(b =>
+      b.className = 'btn btn-small grow ' + ((Number(b.dataset.level) || null) === now ? 'btn-exec' : 'btn-ghost'));
+  };
+  $$('#pa-level [data-level]', ov).forEach(b => b.addEventListener('click', async () => {
+    await setPlayerLevel({ deviceId: su.deviceId, name: su.name }, Number(b.dataset.level) || null);
+    paintLevel();
+  }));
+  paintLevel();
+
   const passBtn = $('#pa-pass', ov);
   if (passBtn) passBtn.addEventListener('click', () => {
     openPassModal({ deviceId: su.deviceId, name: su.name, battlePass: playerPass(su.deviceId) }, (type) => {
