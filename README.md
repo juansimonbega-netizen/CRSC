@@ -296,6 +296,29 @@ who it covered; the person they paid for is told who covered them, not that
 "their payment" arrived. Buying a season pass gets its own receipt explaining
 that their spot is now held every week.
 
+## Past Saturdays are the club's record
+
+Nothing is ever deleted. Every Saturday that has been played stays in the
+database with its full roster — who was on which list, who paid and how, who
+was checked in, who took their name off — and execs reach it two ways: the
+**week by week** list on the home screen (date, players, collected, unpaid)
+and the event itself, which opens exactly as it did on the night.
+
+Players never see past weeks. A finished Saturday is the club's record, not
+a sign-up sheet.
+
+Three things protect it:
+
+- **A played Saturday cannot be deleted.** The editor refuses outright once a
+  past event has sign-ups recorded on it, rather than asking a question one
+  mistaken tap answers wrongly.
+- **Every past week loads, not just the recent ones.** The home screen used
+  to fetch the twelve most recent, so in a fifteen-week season the earliest
+  weeks reported "0 players, 0$ collected" — indistinguishable from a night
+  nobody came to. A week whose roster has not arrived yet now says so.
+- **The whole season exports to one CSV**, removals included, for handover to
+  next year's execs or any question that outlives the app.
+
 ## Removal log (proof trail)
 
 Taking a name off a list frees the spot, so the sign-up itself has to go —

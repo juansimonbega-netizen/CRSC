@@ -62,14 +62,16 @@ function openModal(html, { wide = false } = {}) {
   return overlay;
 }
 
-function confirmModal(message, confirmLabel) {
+/* `alert: true` states something rather than asking it — one button, no
+ * destructive option to tap by accident. */
+function confirmModal(message, confirmLabel, { alert = false } = {}) {
   return new Promise(resolve => {
     const ov = openModal(`
       <div class="modal-body">
         <p class="confirm-msg">${esc(message)}</p>
         <div class="row gap">
-          <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
-          <button class="btn btn-danger grow" id="cf-yes">${esc(confirmLabel || t('confirm'))}</button>
+          ${alert ? '' : `<button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>`}
+          <button class="btn ${alert ? 'btn-primary' : 'btn-danger'} grow" id="cf-yes">${esc(confirmLabel || t('confirm'))}</button>
         </div>
       </div>`);
     $('#cf-yes', ov).addEventListener('click', () => { ov.remove(); resolve(true); });
@@ -127,6 +129,13 @@ const DEVICE = deviceId();
 
 function eventSignups(eventId) {
   return state.signups[eventId] || [];
+}
+
+/* Has this week's roster actually arrived? An undefined entry means "not
+ * fetched yet" — very different from a night nobody signed up for, and the
+ * difference matters when the screen is reporting a week's takings. */
+function signupsLoaded(eventId) {
+  return Array.isArray(state.signups[eventId]);
 }
 
 function listEntries(eventId, listId) {
@@ -1053,6 +1062,13 @@ function myGamesHtml() {
 }
 
 function weekRecordCard(ev) {
+  if (!signupsLoaded(ev.id)) {
+    return `
+    <a class="record-row" href="#/event/${esc(ev.id)}">
+      <span class="record-date">${esc(fmtDateShort(ev.date))}</span>
+      <span class="grow hint">${esc(t('loadingWeek'))}</span>
+    </a>`;
+  }
   const people = personTotals(ev);
   const collected = people.reduce((a, p) => a + (p.paidAmount || 0), 0);
   const outstanding = people.filter(p => !p.paid).reduce((a, p) => a + p.total, 0);
@@ -1074,7 +1090,7 @@ function renderHome() {
   // Scheduled weeks have no sign-ups yet, so there is nothing to watch.
   upcoming.filter(e => !isScheduled(e)).forEach(e => store.watchEvent(e.id));
   if (exec) {
-    past.slice(0, 12).forEach(e => store.watchEvent(e.id));
+    past.forEach(e => store.watchEvent(e.id));
     store.watchPlayers();
     store.watchPayments();
     store.watchRemovals();
@@ -1116,7 +1132,9 @@ function renderHome() {
           <button class="btn btn-ghost" id="btn-settings">${esc(t('clubSettings'))}</button>
           ${store.mode === 'demo' ? `<button class="btn btn-ghost" id="btn-reset-demo">${esc(t('resetDemo'))}</button>` : ''}
         </div>
-        ${past.length ? `<h3 class="section-sub">${esc(t('weekRecord'))}</h3><div class="card record-card">${past.map(weekRecordCard).join('')}</div>` : ''}
+        ${past.length ? `<h3 class="section-sub">${esc(t('weekRecord'))}</h3><div class="card record-card">${past.map(weekRecordCard).join('')}</div>
+          <button class="btn btn-ghost wide" id="btn-season-csv">${esc(t('exportSeason'))}</button>
+          <p class="hint">${esc(t('archiveNote'))}</p>` : ''}
       </div>` : ''}
 
     <footer class="info-box">
@@ -1134,6 +1152,7 @@ function renderHome() {
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
   $('#btn-ledger')?.addEventListener('click', openLedgerModal);
+  $('#btn-season-csv')?.addEventListener('click', exportSeasonCsv);
   $('#btn-settings')?.addEventListener('click', openSettingsModal);
   $('#btn-reset-demo')?.addEventListener('click', async () => {
     if (await confirmModal(t('resetDemoConfirm'))) {
@@ -1884,6 +1903,46 @@ function seasonLedger() {
  * The club's founding problem was that nobody could answer "who owes us
  * what" — so that number is the first thing on the page.
  */
+/*
+ * The whole season in one file. Per-event CSV answers "what happened that
+ * night"; this answers "what happened this season", which is the question
+ * asked when the club hands over to next year's execs.
+ */
+function exportSeasonCsv() {
+  const covered = {};
+  const rows = [['Date', 'Session', 'Sport', 'List', 'Status', 'Name', 'Email', 'Phone',
+                 'Instagram', 'Team', 'Payment method', 'Paid', 'Checked in']];
+  const played = state.events.filter(e => signupsLoaded(e.id) && eventSignups(e.id).length)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  for (const ev of played) {
+    const cov = coveredSignupIds(ev);
+    for (const l of ev.lists || []) {
+      const sess = sessionById(ev, l.sessionId);
+      const { confirmed, waitlist } = splitByCap(listEntries(ev.id, l.id), l.cap || 0);
+      const add = (su, status) => rows.push([ev.date, sess?.label || '', SPORTS[l.sport]?.label || l.sport,
+        l.label, status, su.name, su.email || '', su.phone || '', su.insta || '', su.team || '',
+        su.method, su.paid ? 'yes' : (cov.has(su.id) ? 'BATTLE PASS' : 'no'), su.checkedIn ? 'yes' : 'no']);
+      confirmed.forEach(su => add(su, 'confirmed'));
+      waitlist.forEach(su => add(su, 'waitlist'));
+    }
+  }
+  // Removals belong in the archive too — they are the proof trail.
+  for (const r of state.removals || []) {
+    const ev = state.events.find(e => e.id === r.eventId);
+    rows.push([ev?.date || '', r.sessionLabel || '', r.sportLabel || '', r.listLabel || '',
+      'REMOVED' + (r.flagged ? ' (was checked in)' : ''), r.name, r.email || '', '', '', '',
+      '', '', '']);
+  }
+  const csv = rows.map(x => x.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'crsc-season-' + todayStr() + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(t('seasonExported', { n: played.length }));
+}
+
 function openLedgerModal() {
   const rows = seasonLedger();
   const debtors = rows.filter(r => r.owed > 0);
@@ -2690,6 +2749,12 @@ function openEventEditor(ev, { isNew = false } = {}) {
 
   const del = $('#ee-delete', ov);
   if (del) del.addEventListener('click', async () => {
+    const played = isPastEvent(draft) && eventSignups(draft.id).length;
+    if (played) {
+      ov.remove();
+      await confirmModal(t('cannotDeletePast', { n: played, date: fmtDate(draft.date) }), t('ok'), { alert: true });
+      return;
+    }
     ov.remove();
     if (await confirmModal(t('deleteEventConfirm'), t('deleteEvent'))) {
       await store.deleteEvent(draft.id);

@@ -79,6 +79,14 @@ const STRINGS = {
   autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
   undo: ['Undo', 'Annuler'],
 
+  // Past weeks: the club's record
+  loadingWeek: ['loading…', 'chargement…'],
+  exportSeason: ['Export the whole season (CSV)', 'Exporter toute la saison (CSV)'],
+  seasonExported: ['{n} week(s) exported', '{n} semaine(s) exportée(s)'],
+  archiveNote: ['Every past Saturday is kept as the club\u2019s record — who played, who paid, who was checked in, who took their name off. Only execs can see them, and a Saturday that has been played cannot be deleted.', 'Chaque samedi passé est conservé comme registre du club — qui a joué, qui a payé, qui était présent, qui a retiré son nom. Visible seulement par les execs, et un samedi joué ne peut pas être supprimé.'],
+  cannotDeletePast: ['{date} has already been played and {n} sign-up(s) are recorded on it. It is the club\u2019s record of that night and cannot be deleted.', 'Le {date} a déjà eu lieu et {n} inscription(s) y sont enregistrées. C\u2019est le registre du club pour cette soirée et il ne peut pas être supprimé.'],
+  ok: ['OK', 'OK'],
+
   // Playing level (exec-assigned, exec-visible)
   levelLbl: ['Playing level', 'Niveau de jeu'],
   noLevel: ['Not graded', 'Non classé'],
@@ -199,6 +207,14 @@ const STRINGS = {
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
   undo: ['Undo', 'Annuler'],
+
+  // Past weeks: the club's record
+  loadingWeek: ['loading…', 'chargement…'],
+  exportSeason: ['Export the whole season (CSV)', 'Exporter toute la saison (CSV)'],
+  seasonExported: ['{n} week(s) exported', '{n} semaine(s) exportée(s)'],
+  archiveNote: ['Every past Saturday is kept as the club\u2019s record — who played, who paid, who was checked in, who took their name off. Only execs can see them, and a Saturday that has been played cannot be deleted.', 'Chaque samedi passé est conservé comme registre du club — qui a joué, qui a payé, qui était présent, qui a retiré son nom. Visible seulement par les execs, et un samedi joué ne peut pas être supprimé.'],
+  cannotDeletePast: ['{date} has already been played and {n} sign-up(s) are recorded on it. It is the club\u2019s record of that night and cannot be deleted.', 'Le {date} a déjà eu lieu et {n} inscription(s) y sont enregistrées. C\u2019est le registre du club pour cette soirée et il ne peut pas être supprimé.'],
+  ok: ['OK', 'OK'],
 
   // Playing level (exec-assigned, exec-visible)
   levelLbl: ['Playing level', 'Niveau de jeu'],
