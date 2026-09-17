@@ -56,6 +56,41 @@ export const DEFAULT_SETTINGS = {
   ],
 };
 
+/*
+ * Playing levels, lowest first. A player tagged at a level may sign up for
+ * that level and anything below it — the club grades people so a beginner
+ * does not end up on the Advanced + court, not to keep anyone out of the
+ * easier games.
+ *
+ * Only volleyball is graded. Basketball's "Mixed" and "Men" lists are about
+ * who plays together, not how well.
+ */
+export const LEVELS = [
+  { id: 'intermediate', rank: 1, label: 'Intermediate', short: 'INT' },
+  { id: 'advanced',     rank: 2, label: 'Advanced',     short: 'ADV' },
+  { id: 'advmixed',     rank: 3, label: 'Adv + Mixed',  short: 'ADV+ MIX' },
+  { id: 'advplus',      rank: 4, label: 'Advanced +',   short: 'ADV+' },
+];
+
+export function levelByRank(rank) {
+  return LEVELS.find(l => l.rank === rank) || null;
+}
+
+/*
+ * How hard a list is. Events store this per list (`level`), so the club can
+ * change the grading without a code change; the label reading below is only
+ * the fallback for lists created before that existed.
+ */
+export function listLevel(list) {
+  if (!list || list.sport !== 'volleyball') return 0;   // ungraded
+  if (list.level) return Number(list.level);
+  const raw = String(list.label || '');
+  if (/intermediate|débutant|beginner/i.test(raw)) return 1;
+  if (/mix/i.test(raw)) return 3;              // "Adv + Mixed"
+  if (/\+|\bmen\b|\bhomme/i.test(raw)) return 4;  // "Advanced +", "Adv + Men"
+  return 2;                                     // "Advanced"
+}
+
 export const SPORTS = {
   /* Volleyball games: at most 4 teams of at most 7 players each. Team rules
    * for basketball and football are still to be decided by the club. */
@@ -93,12 +128,12 @@ export function makeTemplateEvent(dateStr, title) {
     { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Mixed',              cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
     { id: uid('l'), sessionId: 's1', sport: 'basketball', label: 'Men',                cap: 12, priceE: 10, priceC: 10, teamCount: 0 },
     { id: uid('l'), sessionId: 's1', sport: 'football',   label: '5v5',                cap: 15, priceE: 10, priceC: 10, teamCount: 0 },
-    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced +',         cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
-    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced',           cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Intermediate',       cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Advanced',           cap: 28, priceE: 8,  priceC: 10, teamCount: 4 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Mixed',        cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
-    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Men',          cap: 21, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced +',         cap: 21, level: 4, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's1', sport: 'volleyball', label: 'Advanced',           cap: 21, level: 2, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Intermediate',       cap: 21, level: 1, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Advanced',           cap: 28, level: 2, priceE: 8,  priceC: 10, teamCount: 4 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Mixed',        cap: 21, level: 3, priceE: 8,  priceC: 10, teamCount: 3 },
+    { id: uid('l'), sessionId: 's2', sport: 'volleyball', label: 'Adv + Men',          cap: 21, level: 4, priceE: 8,  priceC: 10, teamCount: 3 },
   ];
   return {
     id: uid('ev'),

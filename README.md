@@ -191,6 +191,34 @@ from claiming it again, so an exec's correction is never overwritten.
 
 (The outgoing mailer lives in [`apps-script/mailer.gs`](apps-script/mailer.gs).)
 
+## Playing levels
+
+Volleyball is graded in four steps — **Intermediate**, **Advanced**,
+**Adv + Mixed**, **Advanced +** — and an exec assigns a player's grade from
+the same place they set a season pass.
+
+A brand-new member is ungraded and may sign up wherever they like: the club
+decides where somebody belongs after seeing them play, not before. Once
+graded, a player can sign **themselves** up for their level **and anything
+below it**. Higher levels stay visible on the sign-up sheet but locked, with
+"ask an exec" beside them — hiding them would only prompt "where did
+Advanced + go?", and this way the player can see the game exists and knows
+who to ask.
+
+Execs are never gated. Placing somebody by hand is exactly how a player moves
+up, and `+ ADD PLAYER` and **Move to** both ignore the grade.
+
+Basketball and football are ungraded: their "Mixed" and "Men" lists are about
+who plays together, not how well.
+
+The grade is **exec-only**, like payment status — it is the club's note about
+a player, not a badge for the room to read. Each list carries its own
+`level` (1–4) so the grading can be changed per event without touching code.
+
+Like the exec PIN, this is a convenience gate rather than a security control:
+it lives in the page, so it keeps honest people in the right game rather than
+stopping a determined one.
+
 ## Season pass (Battle Pass)
 
 A volleyball season pass: **4h $135** (instead of $165) or **2h $75** (instead

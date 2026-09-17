@@ -1,5 +1,5 @@
 import {
-  createStore, SPORTS, uid, deviceId, setDeviceId, makeTemplateEvent, nextSaturday, saturdaysUntil, localISO,
+  createStore, SPORTS, LEVELS, levelByRank, listLevel, uid, deviceId, setDeviceId, makeTemplateEvent, nextSaturday, saturdaysUntil, localISO,
 } from './store.js';
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
 import { promotionCandidate, sendMail, mailerConfigured, reminderDue } from './notify.js';
@@ -206,6 +206,31 @@ function cancellationLocked(ev) {
  * on the player's registry entry. */
 function playerPass(deviceId) {
   return (deviceId && (state.players || {})[deviceId]?.battlePass) || null;
+}
+
+/*
+ * A player's graded level, set by an exec. Null until someone grades them —
+ * a new member plays their first night wherever they like, and the club
+ * decides afterwards where they belong.
+ */
+function playerLevel(deviceId) {
+  const r = deviceId && (state.players || {})[deviceId]?.level;
+  return r ? Number(r) : null;
+}
+
+/*
+ * May this device sign itself up for this list?
+ *
+ * Ungraded players and ungraded lists are always allowed. A graded player
+ * may play at their level and anything below it. Execs are never gated —
+ * they place people by hand, which is how someone gets moved up.
+ */
+function canSelfJoin(list) {
+  const need = listLevel(list);
+  if (!need) return true;
+  const mine = playerLevel(DEVICE);
+  if (!mine) return true;
+  return mine >= need;
 }
 
 /*
@@ -1146,6 +1171,13 @@ async function openSeason() {
 /* ================================================================== */
 
 /* "Battle Pass 2H" / "Battle Pass 4H" chip. `short` fits narrow phone rows. */
+/* A player's grade, shown to execs only — like payment status, it is the
+ * club's note about somebody, not a badge for the room to read. */
+function levelChipHtml(deviceId) {
+  const l = levelByRank(playerLevel(deviceId));
+  return l ? `<span class="chip chip-level" title="${esc(l.label)}">${esc(l.short)}</span>` : '';
+}
+
 function passChipHtml(type, short = false) {
   const label = short ? 'PASS' : t('battlePass');
   return `<span class="chip chip-pass">${esc(label)}${type ? ' ' + esc(String(type).toUpperCase()) : ''}</span>`;
@@ -1188,6 +1220,7 @@ function entryRow(ev, s, { waitlistPos = null, exec = false, covered = false } =
         ${s.insta ? `<small>@${esc(s.insta)}</small>` : ''}
       </div>
       ${waitlistPos !== null ? `<span class="chip chip-wl">${esc(t('wlShort', { n: waitlistPos }))}</span>` : ''}
+      ${exec ? levelChipHtml(s.deviceId) : ''}
       ${exec || mine ? statusChips(s, covered, exec) : ''}
       ${mine && !exec && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cancel="${esc(s.id)}" title="${esc(t('remove'))}">✕</button>` : ''}
     </div>`;
@@ -1430,6 +1463,8 @@ function openProfileModal() {
 }
 
 function openJoinSheet(ev, preselectedListId) {
+  const wanted = preselectedListId && listById(ev, preselectedListId);
+  if (wanted && !canSelfJoin(wanted)) { toast(t('levelBlocked'), 'err'); return; }
   const p = getProfile();
   const myIds = new Set(mySignups(ev.id).map(m => m.listId));
   const s = state.settings;
@@ -1444,11 +1479,16 @@ function openJoinSheet(ev, preselectedListId) {
           const entries = listEntries(ev.id, l.id);
           const full = entries.length >= (l.cap || 0);
           const sport = SPORTS[l.sport] || SPORTS.other;
+          // Levels above the player's grade stay visible but locked. Hiding
+          // them would just prompt "where did Advanced + go?" — this says
+          // the spot exists and who to ask for it.
+          const barred = !canSelfJoin(l);
           return `
-            <label class="join-list ${full ? 'join-full' : ''}">
-              <input type="checkbox" data-list="${esc(l.id)}" ${l.id === preselectedListId ? 'checked' : ''}>
+            <label class="join-list ${full ? 'join-full' : ''} ${barred ? 'join-barred' : ''}">
+              <input type="checkbox" data-list="${esc(l.id)}" ${barred ? 'disabled' : ''} ${l.id === preselectedListId && !barred ? 'checked' : ''}>
               <span class="grow">${esc(sport.label)} — ${esc(l.label)}</span>
-              ${full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>` : ''}
+              ${barred ? `<span class="chip chip-muted">${esc(t('askExec'))}</span>`
+                : full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>` : ''}
             </label>`;
         }).join('')}
       </div>`;
@@ -1504,6 +1544,8 @@ function openJoinSheet(ev, preselectedListId) {
     if (!np) return;
     const chosen = $$('input[data-list]:checked', ov).map(c => c.dataset.list);
     if (!chosen.length) { toast(t('pickOne'), 'err'); return; }
+    // The checkbox is disabled, but never trust the form alone.
+    if (chosen.some(id => !canSelfJoin(listById(ev, id)))) { toast(t('levelBlocked'), 'err'); return; }
     const method = $('input[name="paym"]:checked', ov).value;
     saveProfile(np);
     registerPlayer(np);
@@ -1954,6 +1996,18 @@ function allPlayers() {
   return Object.values(byId).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
+/*
+ * Grade a player. From then on they can sign themselves up for this level
+ * and anything below it; execs can still place them anywhere by hand, which
+ * is how somebody moves up.
+ */
+async function setPlayerLevel(player, rank) {
+  if (playerLevel(player.deviceId) === (rank || null)) return;
+  await store.savePlayer({ deviceId: player.deviceId, name: player.name, level: rank || null });
+  const l = rank ? levelByRank(rank) : null;
+  toast(l ? t('levelSet', { name: player.name, level: l.label }) : t('levelCleared', { name: player.name }));
+}
+
 /* Set/clear a player's Battle Pass (execs only; volleyball season pass). */
 async function setBattlePass(player, type, lists = null) {
   await store.savePlayer({
@@ -1979,10 +2033,17 @@ function openPassModal(player, onDone) {
   const chosen = passLists(state.players[player.deviceId] || player).slice();
   const has = (l) => chosen.some(c => c.sport === l.sport && c.sessionId === l.sessionId && c.label === l.label);
   let type = player.battlePass || null;
+  let level = playerLevel(player.deviceId);
 
   const ov = openModal(`
     <div class="modal-body">
       <h2 class="m0">${esc(player.name)}</h2>
+      <label class="field-label">${esc(t('levelLbl'))}</label>
+      <div class="row gap wrap" id="pm-level">
+        <button class="btn btn-small grow" data-level="">${esc(t('noLevel'))}</button>
+        ${LEVELS.map(l => `<button class="btn btn-small grow" data-level="${l.rank}">${esc(l.label)}</button>`).join('')}
+      </div>
+      <p class="hint">${esc(t('levelModalHint'))}</p>
       <p class="hint">${esc(t('passModalHint'))}</p>
       <label class="field-label">${esc(t('battlePassLbl'))}</label>
       <div class="row gap" id="pm-type">
@@ -2015,7 +2076,13 @@ function openPassModal(player, onDone) {
     $$('#pm-type [data-type]', ov).forEach(b =>
       b.className = 'btn btn-small grow ' + ((b.dataset.type || null) === type ? 'btn-exec' : 'btn-ghost'));
     $('#pm-seats', ov).hidden = !type;
+    $$('#pm-level [data-level]', ov).forEach(b =>
+      b.className = 'btn btn-small grow ' + ((Number(b.dataset.level) || null) === level ? 'btn-exec' : 'btn-ghost'));
   }
+  $$('#pm-level [data-level]', ov).forEach(b => b.addEventListener('click', () => {
+    level = Number(b.dataset.level) || null;
+    paint();
+  }));
   $$('#pm-type [data-type]', ov).forEach(b => b.addEventListener('click', () => {
     type = b.dataset.type || null;
     paint();
@@ -2032,8 +2099,9 @@ function openPassModal(player, onDone) {
       }
     }
     await setBattlePass(player, type, lists);
+    await setPlayerLevel(player, level);
     ov.remove();
-    if (onDone) onDone(type);
+    if (onDone) onDone(type, level);
   });
 }
 
@@ -2062,6 +2130,7 @@ function openPlayersModal() {
             ${p.insta ? '@' + esc(p.insta) + ' · ' : ''}${esc(p.email || '')}${p.phone ? ' · ' + esc(p.phone) : ''}
           </small>
         </div>
+        ${levelChipHtml(p.deviceId)}
         ${p.noShows >= 2 ? `<span class="chip chip-flag">${esc(t('noShowChip', { n: p.noShows }))}</span>` : ''}
         ${p.flagged ? `<span class="chip chip-flag">${esc(t('flaggedRemovals', { n: p.flagged }))}</span>` : (p.removals ? `<span class="chip chip-muted">${esc(t('removalsCount', { n: p.removals }))}</span>` : '')}
         ${p.owes ? `<span class="chip chip-unpaid">${esc(t('owesAmount', { amount: fmtMoney(p.owes) }))}</span>`
@@ -2140,6 +2209,7 @@ function openFindModal(ev) {
                 ${su.email ? ' · ' + esc(su.email) : ''}${su.phone ? ' · ' + esc(su.phone) : ''}
               </small>
             </div>
+            ${levelChipHtml(su.deviceId)}
             ${su.viaPass ? `<span class="chip chip-pass-off">${esc(t('heldChip'))}</span>` : ''}
             <span class="chip ${paid ? 'chip-paid' : 'chip-unpaid'}">${esc(paid ? t('paidChip') : t('unpaidChip'))}</span>
             <span class="chip ${su.checkedIn ? 'chip-in-ok' : 'chip-muted'}">${esc(su.checkedIn ? t('inChip') : t('outChip'))}</span>

@@ -104,6 +104,12 @@ a { color: var(--orange-dark); }
 .chip-muted { background: #e7e0d0; color: var(--ink-soft); }
 .chip-demo { background: var(--ink); color: var(--bg); letter-spacing: 0.08em; }
 .chip-pass { background: var(--ink); color: #f5b942; letter-spacing: 0.04em; }
+/* Playing level: an exec's note, so it reads quietly rather than as a badge. */
+.chip-level { background: #e2e8f4; color: #2c4a77; letter-spacing: 0.04em; }
+/* A level above the player's grade: visible, so they know the game exists,
+ * but plainly not theirs to take. */
+.join-barred { opacity: 0.55; cursor: not-allowed; }
+.join-barred input { cursor: not-allowed; }
 /* checked-in chip: green when also paid, yellow when here but unpaid */
 .chip-in-ok { background: var(--green-soft); color: var(--green); }
 .chip-in-warn { background: #f8ecc0; color: #7c5c07; }

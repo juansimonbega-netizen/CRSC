@@ -79,6 +79,15 @@ const STRINGS = {
   autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
   undo: ['Undo', 'Annuler'],
 
+  // Playing level (exec-assigned, exec-visible)
+  levelLbl: ['Playing level', 'Niveau de jeu'],
+  noLevel: ['Not graded', 'Non classé'],
+  levelModalHint: ['Once graded, this player can only sign themselves up for this level and below. Execs can still place them anywhere by hand.', 'Une fois classé, ce joueur ne peut s\u2019inscrire qu\u2019à ce niveau et aux niveaux inférieurs. Les execs peuvent toujours le placer manuellement.'],
+  levelSet: ['{name} graded {level}', '{name} classé {level}'],
+  levelCleared: ['{name} is no longer graded', '{name} n\u2019est plus classé'],
+  askExec: ['ask an exec', 'demander à un exec'],
+  levelBlocked: ['That level is above your grade — talk to an exec and they can add you.', 'Ce niveau est au-dessus de votre classement — parlez-en à un exec, il peut vous ajouter.'],
+
   // Season pass: held spots, level, automatic tagging
   passModalHint: ['Set the season pass and the level this spot is held in. A held spot is added to every Saturday automatically.', 'Choisissez la passe de saison et le niveau où la place est réservée. Une place réservée est ajoutée à chaque samedi automatiquement.'],
   noPass: ['No pass', 'Aucune passe'],
@@ -190,6 +199,15 @@ const STRINGS = {
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
   undo: ['Undo', 'Annuler'],
+
+  // Playing level (exec-assigned, exec-visible)
+  levelLbl: ['Playing level', 'Niveau de jeu'],
+  noLevel: ['Not graded', 'Non classé'],
+  levelModalHint: ['Once graded, this player can only sign themselves up for this level and below. Execs can still place them anywhere by hand.', 'Une fois classé, ce joueur ne peut s\u2019inscrire qu\u2019à ce niveau et aux niveaux inférieurs. Les execs peuvent toujours le placer manuellement.'],
+  levelSet: ['{name} graded {level}', '{name} classé {level}'],
+  levelCleared: ['{name} is no longer graded', '{name} n\u2019est plus classé'],
+  askExec: ['ask an exec', 'demander à un exec'],
+  levelBlocked: ['That level is above your grade — talk to an exec and they can add you.', 'Ce niveau est au-dessus de votre classement — parlez-en à un exec, il peut vous ajouter.'],
 
   // Season pass: held spots, level, automatic tagging
   passModalHint: ['Set the season pass and the level this spot is held in. A held spot is added to every Saturday automatically.', 'Choisissez la passe de saison et le niveau où la place est réservée. Une place réservée est ajoutée à chaque samedi automatiquement.'],

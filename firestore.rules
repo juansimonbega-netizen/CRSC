@@ -30,7 +30,11 @@ service cloud.firestore {
         && (!('email' in request.resource.data) || request.resource.data.email.size() <= 100)
         && (!('phone' in request.resource.data) || request.resource.data.phone.size() <= 30)
         && (!('insta' in request.resource.data) || request.resource.data.insta.size() <= 60)
-        && (!('photo' in request.resource.data) || request.resource.data.photo.size() <= 60000);
+        && (!('photo' in request.resource.data) || request.resource.data.photo.size() <= 60000)
+        // Playing level: one of the four grades, or cleared.
+        && (!('level' in request.resource.data) || request.resource.data.level == null
+            || (request.resource.data.level is int
+                && request.resource.data.level >= 1 && request.resource.data.level <= 4));
     }
 
     // Received e-transfers, written by the Gmail matcher script. The app
