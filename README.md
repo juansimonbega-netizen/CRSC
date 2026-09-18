@@ -240,6 +240,23 @@ If a pass holder cannot come, an exec removes their name for that week and it
 **stays** removed — the seating only ever adds a missing spot, it never
 re-adds one somebody took off on purpose.
 
+## Amounts that are not the list price
+
+Tapping **Mark paid** settles the list price and stays one tap, because that
+is nearly every payment. Underneath it, **"Received a different amount?"**
+records what was actually handed over, for the ones that are not: $5 against
+an $8 bill, a $20 note for a $15 bundle, cash that does not divide neatly.
+
+Recorded cash counts against the person's whole night, not the one spot it
+was typed on — so somebody on two lists who hands over $20 is settled
+everywhere, and the club is not chasing them for a spot whose tick box was
+never checked. A part-payment shows on the roster as **"3$ short"**, never as
+unpaid: real money came in, and an exec reading the list should see that.
+
+The remainder flows everywhere the full price used to: the reminder emails,
+the money-owed screen, the season CSV, and the dues the Gmail matcher reads —
+so a player who has part-paid is expected to transfer only what is left.
+
 ## Finding one person
 
 Execs get **Find player** on every event: one box that searches every list at

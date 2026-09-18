@@ -79,6 +79,20 @@ const STRINGS = {
   autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
   undo: ['Undo', 'Annuler'],
 
+  // Recording an amount that is not the list price
+  gotPaidLbl: ['Received a different amount?', 'Montant reçu différent?'],
+  record: ['Record', 'Enregistrer'],
+  clear: ['Clear', 'Effacer'],
+  amountRecorded: ['{amount} recorded for {name}', '{amount} enregistré pour {name}'],
+  amountCleared: ['Amount cleared', 'Montant effacé'],
+  badAmount: ['That is not a number', 'Ce n\u2019est pas un nombre'],
+  stillOwesNight: ['Still owes {amount} tonight (billed {billed})', 'Doit encore {amount} ce soir (facturé {billed})'],
+  settledWith: ['Settled — {amount} received', 'Réglé — {amount} reçu'],
+  nothingOwed: ['Nothing owed tonight', 'Rien à payer ce soir'],
+  partOf: ['of it', 'de la somme'],
+  shortBy: ['{amount} short', 'manque {amount}'],
+  partPaidTitle: ['{amount} received, still short', '{amount} reçu, il manque le reste'],
+
   // The record of a Saturday that has been played
   recordBanner: ['This Saturday has been played. Below is the club\u2019s record of it — players only see upcoming weeks.', 'Ce samedi a eu lieu. Voici le registre du club — les joueurs ne voient que les semaines à venir.'],
   signedUp: ['signed up', 'inscrits'],
@@ -215,6 +229,20 @@ const STRINGS = {
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
   undo: ['Undo', 'Annuler'],
+
+  // Recording an amount that is not the list price
+  gotPaidLbl: ['Received a different amount?', 'Montant reçu différent?'],
+  record: ['Record', 'Enregistrer'],
+  clear: ['Clear', 'Effacer'],
+  amountRecorded: ['{amount} recorded for {name}', '{amount} enregistré pour {name}'],
+  amountCleared: ['Amount cleared', 'Montant effacé'],
+  badAmount: ['That is not a number', 'Ce n\u2019est pas un nombre'],
+  stillOwesNight: ['Still owes {amount} tonight (billed {billed})', 'Doit encore {amount} ce soir (facturé {billed})'],
+  settledWith: ['Settled — {amount} received', 'Réglé — {amount} reçu'],
+  nothingOwed: ['Nothing owed tonight', 'Rien à payer ce soir'],
+  partOf: ['of it', 'de la somme'],
+  shortBy: ['{amount} short', 'manque {amount}'],
+  partPaidTitle: ['{amount} received, still short', '{amount} reçu, il manque le reste'],
 
   // The record of a Saturday that has been played
   recordBanner: ['This Saturday has been played. Below is the club\u2019s record of it — players only see upcoming weeks.', 'Ce samedi a eu lieu. Voici le registre du club — les joueurs ne voient que les semaines à venir.'],

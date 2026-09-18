@@ -405,6 +405,19 @@ function confirmedSignupIds(ev) {
   return set;
 }
 
+/* personTotals walks every sign-up on the night, and a roster row needs it
+ * once per name. Cleared at the start of each render. */
+let totalsCache = {};
+function personTotalsCached(ev) {
+  return (totalsCache[ev.id] = totalsCache[ev.id] || personTotals(ev));
+}
+function personSettlement(ev, su) {
+  return personTotalsCached(ev).find(p => personKey(p.signups[0]) === personKey(su)) || null;
+}
+
+/* Money, kept to the cent — floats drift once you start adding part-payments. */
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
 function personTotals(ev) {
   const covered = coveredSignupIds(ev);
   const held = confirmedSignupIds(ev);
@@ -427,14 +440,22 @@ function personTotals(ev) {
     // are not billed, not reminded, and not chased — and their spot is not
     // counted in what the club is owed.
     const owing = p.signups.filter(x => !x.paid && !covered.has(x.id) && held.has(x.id));
-    const { total: paidAmount } = computePrice(ev, settled.map(x => x.listId), p.method, null);
-    let { total } = computePrice(ev, owing.map(x => x.listId), p.method, null);
-    const paid = owing.length === 0;   // nothing owed: settled, covered, or waitlisted
+    const { total: settledValue } = computePrice(ev, settled.map(x => x.listId), p.method, null);
+    let { total: billed } = computePrice(ev, owing.map(x => x.listId), p.method, null);
     // Automatic late fee once the Saturday has passed and they still owe.
-    const late = isPastEvent(ev) && !paid && total > 0;
-    if (late) total += parseFloat(state.settings.lateFeeAmount) || 0;
+    const late = isPastEvent(ev) && owing.length > 0 && billed > 0;
+    if (late) billed += parseFloat(state.settings.lateFeeAmount) || 0;
+    // Cash an exec actually took, when it was not the list price: a partial
+    // payment, an odd note, someone rounding up. Recorded against the spot,
+    // summed for the person. Without it a $5 handed over against an $8 bill
+    // could only be filed as paid or unpaid, and both are wrong.
+    const received = p.signups.reduce((a, x) => a + (parseFloat(x.amountPaid) || 0), 0);
+    const total = Math.max(0, round2(billed - received));
+    const paidAmount = round2(settledValue + received);
+    const paid = total === 0;          // settled, covered, waitlisted, or paid off
     return {
-      ...p, total, paidAmount, pass, late, paid,
+      ...p, total, paidAmount, billed, received, pass, late, paid,
+      partial: received > 0 && total > 0,
       checkedIn: p.signups.some(x => x.checkedIn),
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
@@ -872,6 +893,7 @@ function route() {
 }
 
 function render() {
+  totalsCache = {};
   const r = route();
   renderHeader();
   if (r.view === 'adopt') { adoptIdentity(r.payload); return; }
@@ -1202,8 +1224,14 @@ function passChipHtml(type, short = false) {
   return `<span class="chip chip-pass">${esc(label)}${type ? ' ' + esc(String(type).toUpperCase()) : ''}</span>`;
 }
 
-function paymentChip(s, covered = false, short = false) {
+function paymentChip(s, covered = false, short = false, settle = null) {
   if (covered) return passChipHtml(playerPass(s.deviceId), short);
+  // Cash an exec recorded settles the person's whole night, which can cover a
+  // spot whose own paid flag was never ticked.
+  if (settle && settle.received > 0) {
+    if (settle.paid) return `<span class="chip chip-paid">${esc(t('paid'))}</span>`;
+    return `<span class="chip chip-part" title="${esc(t('partPaidTitle', { amount: fmtMoney(settle.received) }))}">${esc(t('shortBy', { amount: fmtMoney(settle.total) }))}</span>`;
+  }
   if (s.paid) return `<span class="chip chip-paid">${esc(t('paid'))}</span>`;
   return `<span class="chip chip-unpaid">${esc(s.method === 'cash' ? t('cashUnpaid') : t('etransferUnpaid'))}</span>`;
 }
@@ -1214,7 +1242,7 @@ function paymentChip(s, covered = false, short = false) {
  * outlined when the person holds a pass that does NOT cover this spot (a 2h
  * pass on their second slot, or another sport) so nobody gets asked twice.
  */
-function statusChips(s, covered, exec) {
+function statusChips(s, covered, exec, settle = null) {
   const pass = playerPass(s.deviceId);
   const here = exec && s.checkedIn
     ? `<span class="chip ${s.paid || covered ? 'chip-in-ok' : 'chip-in-warn'}">${esc(t('here'))}</span>`
@@ -1222,7 +1250,7 @@ function statusChips(s, covered, exec) {
   const passMark = !covered && pass
     ? `<span class="chip chip-pass-off" title="${esc(t('battlePassLbl'))}">${esc(String(pass).toUpperCase())}</span>`
     : '';
-  return here + passMark + paymentChip(s, covered, true);
+  return here + passMark + paymentChip(s, covered, true, settle);
 }
 
 /*
@@ -1240,7 +1268,7 @@ function entryRow(ev, s, { waitlistPos = null, exec = false, covered = false } =
       </div>
       ${waitlistPos !== null ? `<span class="chip chip-wl">${esc(t('wlShort', { n: waitlistPos }))}</span>` : ''}
       ${exec ? levelChipHtml(s.deviceId) : ''}
-      ${exec || mine ? statusChips(s, covered, exec) : ''}
+      ${exec || mine ? statusChips(s, covered, exec, personSettlement(ev, s)) : ''}
       ${mine && !exec && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cancel="${esc(s.id)}" title="${esc(t('remove'))}">✕</button>` : ''}
     </div>`;
 }
@@ -1717,6 +1745,8 @@ function openPinModal() {
 
 function openPlayerAdminModal(ev, su) {
   const curList = listById(ev, su.listId);
+  // A pass already covers this spot, so there is no money to take for it.
+  const coveredHere = coveredSignupIds(ev).has(su.id);
   const listsOptions = (ev.lists || []).map(l => {
     const sess = sessionById(ev, l.sessionId);
     return `<option value="${esc(l.id)}" ${l.id === su.listId ? 'selected' : ''}>${esc(sess ? sess.label : '')} · ${esc(SPORTS[l.sport]?.label || '')} ${esc(l.label)}</option>`;
@@ -1739,6 +1769,15 @@ function openPlayerAdminModal(ev, su) {
         <button class="btn grow cb" id="pa-in"></button>
       </div>
       <p class="hint">${esc(su.method === 'cash' ? t('cashOnSite') : t('etransfer'))}${su.addedByExec ? ' · ' + esc(t('addedByExec')) : ''}</p>
+      ${coveredHere ? '' : `
+        <label class="field-label">${esc(t('gotPaidLbl'))}</label>
+        <div class="row gap center">
+          <input class="input input-amount" id="pa-amount" type="number" inputmode="decimal" min="0" step="0.01"
+                 value="${su.amountPaid != null ? esc(String(su.amountPaid)) : ''}" placeholder="0.00">
+          <button class="btn btn-small btn-success" id="pa-amount-go">${esc(t('record'))}</button>
+          ${su.amountPaid ? `<button class="btn btn-small btn-ghost" id="pa-amount-clear">${esc(t('clear'))}</button>` : ''}
+        </div>
+        <p class="hint" id="pa-owed"></p>`}
       ${teamCount ? (() => {
         // Enforce per-team size limits (volleyball: max 7 per team).
         const size = SPORTS[curList?.sport]?.teamSize || 0;
@@ -1779,7 +1818,6 @@ function openPlayerAdminModal(ev, su) {
    * both off = red, exactly one on = yellow, both on = green.
    * A Battle Pass counts as paid (its checkbox is locked on).
    */
-  const coveredHere = coveredSignupIds(ev).has(su.id);
   function paintStatus() {
     const p = su.paid || coveredHere;
     const c = !!su.checkedIn;
@@ -1800,6 +1838,38 @@ function openPlayerAdminModal(ev, su) {
     su.paid = next;
     paintStatus();
   });
+  // What this person still owes for the whole night, not just this one spot,
+  // because that is the number the exec is holding cash against.
+  const paintOwed = () => {
+    const el = $('#pa-owed', ov);
+    if (!el) return;
+    const me = personTotals(ev).find(x => x.name === su.name);
+    if (!me) { el.textContent = ''; return; }
+    el.textContent = me.total > 0
+      ? t('stillOwesNight', { amount: fmtMoney(me.total), billed: fmtMoney(me.billed) })
+      : (me.received ? t('settledWith', { amount: fmtMoney(me.received) }) : t('nothingOwed'));
+  };
+  paintOwed();
+
+  $('#pa-amount-go', ov)?.addEventListener('click', async () => {
+    const raw = $('#pa-amount', ov).value.trim();
+    const amount = raw === '' ? null : Math.max(0, round2(raw));
+    if (amount !== null && !isFinite(amount)) { toast(t('badAmount'), 'err'); return; }
+    await store.updateSignup(ev.id, su.id, { amountPaid: amount, paidAt: amount ? Date.now() : null });
+    su.amountPaid = amount;
+    toast(amount ? t('amountRecorded', { name: su.name, amount: fmtMoney(amount) }) : t('amountCleared'));
+    paintOwed();
+    paintStatus();
+  });
+  $('#pa-amount-clear', ov)?.addEventListener('click', async () => {
+    await store.updateSignup(ev.id, su.id, { amountPaid: null });
+    su.amountPaid = null;
+    $('#pa-amount', ov).value = '';
+    toast(t('amountCleared'));
+    paintOwed();
+    paintStatus();
+  });
+
   $('#pa-in', ov).addEventListener('click', async () => {
     const next = !su.checkedIn;
     await store.updateSignup(ev.id, su.id, { checkedIn: next });
@@ -1937,7 +2007,7 @@ function seasonLedger() {
       if (past) rec.games++;
       if (!p.paid && p.total > 0) {
         rec.owed += p.total;
-        rec.nights.push({ id: ev.id, date: ev.date, amount: p.total, late: p.late });
+        rec.nights.push({ id: ev.id, date: ev.date, amount: p.total, late: p.late, received: p.received });
       }
       // Held a spot on a night that has been and gone, never checked in.
       if (past && p.signups.some(su => confirmed.has(su.id)) && !p.checkedIn) {
@@ -1963,7 +2033,7 @@ function seasonLedger() {
 function exportSeasonCsv() {
   const covered = {};
   const rows = [['Date', 'Session', 'Sport', 'List', 'Status', 'Name', 'Email', 'Phone',
-                 'Instagram', 'Team', 'Payment method', 'Paid', 'Checked in']];
+                 'Instagram', 'Team', 'Payment method', 'Paid', 'Amount received', 'Checked in']];
   const played = state.events.filter(e => signupsLoaded(e.id) && eventSignups(e.id).length)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   for (const ev of played) {
@@ -1973,7 +2043,8 @@ function exportSeasonCsv() {
       const { confirmed, waitlist } = splitByCap(listEntries(ev.id, l.id), l.cap || 0);
       const add = (su, status) => rows.push([ev.date, sess?.label || '', SPORTS[l.sport]?.label || l.sport,
         l.label, status, su.name, su.email || '', su.phone || '', su.insta || '', su.team || '',
-        su.method, su.paid ? 'yes' : (cov.has(su.id) ? 'BATTLE PASS' : 'no'), su.checkedIn ? 'yes' : 'no']);
+        su.method, su.paid ? 'yes' : (cov.has(su.id) ? 'BATTLE PASS' : 'no'),
+        su.amountPaid != null ? su.amountPaid : '', su.checkedIn ? 'yes' : 'no']);
       confirmed.forEach(su => add(su, 'confirmed'));
       waitlist.forEach(su => add(su, 'waitlist'));
     }
@@ -2017,7 +2088,7 @@ function openLedgerModal() {
               <div class="grow entry-name">
                 <span>${esc(r.name)}${r.noShows.length ? ` <span class="chip chip-flag">${esc(t('noShowChip', { n: r.noShows.length }))}</span>` : ''}</span>
                 <small>
-                  ${r.nights.map(n => esc(fmtDate(n.date)) + (n.late ? ' ⚠' : '')).join(' · ')}
+                  ${r.nights.map(n => esc(fmtDate(n.date)) + (n.late ? ' ⚠' : '') + (n.received ? ' (' + fmtMoney(n.received) + ' ' + esc(t('partOf')) + ')' : '')).join(' · ')}
                   ${r.email ? ' · ' + esc(r.email) : ' · ' + esc(t('noEmail'))}
                 </small>
               </div>
