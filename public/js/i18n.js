@@ -79,6 +79,14 @@ const STRINGS = {
   autoUndone: ['{names} back to unpaid', '{names} de nouveau impayé'],
   undo: ['Undo', 'Annuler'],
 
+  // The record of a Saturday that has been played
+  recordBanner: ['This Saturday has been played. Below is the club\u2019s record of it — players only see upcoming weeks.', 'Ce samedi a eu lieu. Voici le registre du club — les joueurs ne voient que les semaines à venir.'],
+  signedUp: ['signed up', 'inscrits'],
+  showedUp: ['showed up', 'présents'],
+  didNotShow: ['no-shows', 'absents'],
+  didNotShowTitle: ['Had a spot, never checked in ({n})', 'Place réservée, jamais présents ({n})'],
+  playedCount: ['{n} played', '{n} ont joué'],
+
   // Past weeks: the club's record
   loadingWeek: ['loading…', 'chargement…'],
   exportSeason: ['Export the whole season (CSV)', 'Exporter toute la saison (CSV)'],
@@ -207,6 +215,14 @@ const STRINGS = {
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
   undo: ['Undo', 'Annuler'],
+
+  // The record of a Saturday that has been played
+  recordBanner: ['This Saturday has been played. Below is the club\u2019s record of it — players only see upcoming weeks.', 'Ce samedi a eu lieu. Voici le registre du club — les joueurs ne voient que les semaines à venir.'],
+  signedUp: ['signed up', 'inscrits'],
+  showedUp: ['showed up', 'présents'],
+  didNotShow: ['no-shows', 'absents'],
+  didNotShowTitle: ['Had a spot, never checked in ({n})', 'Place réservée, jamais présents ({n})'],
+  playedCount: ['{n} played', '{n} ont joué'],
 
   // Past weeks: the club's record
   loadingWeek: ['loading…', 'chargement…'],

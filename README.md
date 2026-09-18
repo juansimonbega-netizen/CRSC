@@ -305,7 +305,13 @@ was checked in, who took their name off — and execs reach it two ways: the
 and the event itself, which opens exactly as it did on the night.
 
 Players never see past weeks. A finished Saturday is the club's record, not
-a sign-up sheet.
+a sign-up sheet — and it reads like one. Opening a played Saturday as an exec
+leads with what the night came to (signed up, showed up, no-shows, collected,
+outstanding), then the people who held a spot and never checked in, then
+everyone who took their name off, with the proof-trail flags intact. The
+rosters below carry the rest: every name, their level, whether they paid and
+whether they were here. Nothing is behind a modal any more, and the lists say
+"12 played" rather than offering spots on a night that is over.
 
 Three things protect it:
 

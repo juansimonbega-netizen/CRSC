@@ -1270,6 +1270,55 @@ function confirmedHtml(ev, l, confirmed, exec, coveredSet) {
   return html;
 }
 
+/*
+ * The summary an exec wants when they open a Saturday that has been played:
+ * how it went, in numbers, and who took their name off. The rosters below
+ * already carry the detail — this is the part that was only ever reachable
+ * through the Payments modal.
+ */
+function eventRecordHtml(ev) {
+  const people = personTotals(ev);
+  const held = confirmedSignupIds(ev);
+  const collected = people.reduce((a, p) => a + (p.paidAmount || 0), 0);
+  const outstanding = people.filter(p => !p.paid).reduce((a, p) => a + p.total, 0);
+  const checkedIn = people.filter(p => p.checkedIn).length;
+  const noShows = people.filter(p => !p.checkedIn && p.signups.some(su => held.has(su.id)));
+  const rms = (state.removals || []).filter(r => r.eventId === ev.id)
+    .sort((a, b) => (b.removedAt || 0) - (a.removedAt || 0));
+
+  return `
+    <div class="record-banner">${esc(t('recordBanner'))}</div>
+    <div class="stat-row">
+      <div class="stat"><strong>${people.length}</strong><span>${esc(t('signedUp'))}</span></div>
+      <div class="stat stat-good"><strong>${checkedIn}</strong><span>${esc(t('showedUp'))}</span></div>
+      <div class="stat ${noShows.length ? 'stat-bad' : ''}"><strong>${noShows.length}</strong><span>${esc(t('didNotShow'))}</span></div>
+      <div class="stat stat-good"><strong>${fmtMoney(collected)}</strong><span>${esc(t('collected'))}</span></div>
+      <div class="stat ${outstanding ? 'stat-bad' : ''}"><strong>${fmtMoney(outstanding)}</strong><span>${esc(t('outstanding'))}</span></div>
+    </div>
+    ${noShows.length ? `
+      <h3 class="section-sub">${esc(t('didNotShowTitle', { n: noShows.length }))}</h3>
+      <div class="summary-list">
+        ${noShows.map(p => `
+          <div class="entry">
+            <span class="grow">${esc(p.name)}</span>
+            ${p.paid ? `<span class="chip chip-paid">${esc(t('paidChip'))}</span>`
+              : `<span class="chip chip-unpaid">${fmtMoney(p.total)}</span>`}
+          </div>`).join('')}
+      </div>` : ''}
+    ${rms.length ? `
+      <h3 class="section-sub">${esc(t('removalsTitle', { n: rms.length }))}</h3>
+      <div class="summary-list">
+        ${rms.map(r => `
+          <div class="entry removal-row ${r.flagged ? 'removal-flagged' : ''}">
+            <div class="grow entry-name">
+              <span>${esc(r.name)}${r.flagged ? ` <span class="chip chip-flag">${esc(r.wasCheckedIn ? t('wasCheckedIn') : t('removedAfterStart'))}</span>` : ''}</span>
+              <small>${esc(r.sportLabel || '')} ${esc(r.listLabel || '')}${r.sessionLabel ? ' · ' + esc(r.sessionLabel) : ''} · ${esc(fmtStamp(r.removedAt))} · ${esc(r.by === 'exec' ? t('removedByExec') : t('removedBySelf'))}</small>
+            </div>
+            ${r.flagged && r.amountOwed ? `<span class="chip chip-unpaid">${esc(t('stillOwes', { amount: fmtMoney(r.amountOwed) }))}</span>` : ''}
+          </div>`).join('')}
+      </div>` : ''}`;
+}
+
 function renderEvent(ev) {
   const exec = isExec();
   const s = state.settings;
@@ -1300,7 +1349,9 @@ function renderEvent(ev) {
                 </div>
                 <div class="list-cap">
                   <div class="capbar"><div class="capbar-fill ${full ? 'full' : ''}" style="width:${l.cap ? Math.min(100, confirmed.length / l.cap * 100) : 0}%"></div></div>
-                  <span class="cap-text">${confirmed.length}/${l.cap || 0}${full ? ` · ${esc(t('full'))}` : ` · ${esc(t('spotsLeft', { n: spotsLeft }))}`}</span>
+                  <span class="cap-text">${isPastEvent(ev)
+                    ? esc(t('playedCount', { n: confirmed.length }))
+                    : `${confirmed.length}/${l.cap || 0}${full ? ` · ${esc(t('full'))}` : ` · ${esc(t('spotsLeft', { n: spotsLeft }))}`}`}</span>
                 </div>
                 <div class="entries">
                   ${confirmedHtml(ev, l, confirmed, exec, coveredSet)}
@@ -1349,6 +1400,7 @@ function renderEvent(ev) {
         </div>
         ${!exec && isOpen && cancellationLocked(ev) ? `<p class="hint">${esc(t('cancelLocked'))}</p>` : ''}` : ''}
       ${isScheduled(ev) ? `<p class="hint scheduled-note">${esc(t('notOpenYet', { date: fmtDate(localISO(new Date(eventOpensAt(ev)))) }))}</p>` : ''}
+      ${exec && isPastEvent(ev) ? eventRecordHtml(ev) : ''}
       ${exec ? `
         <div class="row gap wrap exec-toolbar">
           ${isScheduled(ev) ? `<button class="btn btn-small btn-primary" id="btn-open-now">${esc(t('openNow'))}</button>` : ''}
