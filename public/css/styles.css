@@ -110,6 +110,9 @@ a { color: var(--orange-dark); }
  * not settled either. */
 .chip-part { background: #f8ecc0; color: #7c5c07; }
 .input-amount { max-width: 130px; }
+/* Switching: the options are buttons, so they read as "tap to move here". */
+.switch-opt { width: 100%; text-align: left; cursor: pointer; background: var(--card); font: inherit; }
+.switch-opt:hover { background: #f6f0e2; }
 /* A played Saturday says so plainly, so nobody mistakes the record for a
  * sheet they can still sign up on. */
 .record-banner {

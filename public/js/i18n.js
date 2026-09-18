@@ -109,6 +109,16 @@ const STRINGS = {
   cannotDeletePast: ['{date} has already been played and {n} sign-up(s) are recorded on it. It is the club\u2019s record of that night and cannot be deleted.', 'Le {date} a déjà eu lieu et {n} inscription(s) y sont enregistrées. C\u2019est le registre du club pour cette soirée et il ne peut pas être supprimé.'],
   ok: ['OK', 'OK'],
 
+  // Changing a spot, and one spot per time slot
+  switchSpot: ['change', 'changer'],
+  switchTitle: ['Change your spot', 'Changer de place'],
+  switchFrom: ['You are on {sport} — {list} ({session}). Pick where to move.', 'Vous êtes sur {sport} — {list} ({session}). Choisissez où aller.'],
+  switchNote: ['You keep your spot for the night — you just move to the other list. The new list takes you at the end, and your old spot goes to whoever is next on its waitlist.', 'Vous gardez votre place pour la soirée — vous changez simplement de liste. La nouvelle liste vous prend à la fin, et votre ancienne place revient au prochain sur la liste d\u2019attente.'],
+  switched: ['Moved to {sport} — {list}', 'Déplacé vers {sport} — {list}'],
+  nowhereToSwitch: ['Nothing else to switch to right now.', 'Rien d\u2019autre où aller pour l\u2019instant.'],
+  slotTaken: ['already in this time slot', 'déjà inscrit à cette heure'],
+  onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
+
   // Playing level (exec-assigned, exec-visible)
   levelLbl: ['Playing level', 'Niveau de jeu'],
   noLevel: ['Not graded', 'Non classé'],
@@ -259,6 +269,16 @@ const STRINGS = {
   archiveNote: ['Every past Saturday is kept as the club\u2019s record — who played, who paid, who was checked in, who took their name off. Only execs can see them, and a Saturday that has been played cannot be deleted.', 'Chaque samedi passé est conservé comme registre du club — qui a joué, qui a payé, qui était présent, qui a retiré son nom. Visible seulement par les execs, et un samedi joué ne peut pas être supprimé.'],
   cannotDeletePast: ['{date} has already been played and {n} sign-up(s) are recorded on it. It is the club\u2019s record of that night and cannot be deleted.', 'Le {date} a déjà eu lieu et {n} inscription(s) y sont enregistrées. C\u2019est le registre du club pour cette soirée et il ne peut pas être supprimé.'],
   ok: ['OK', 'OK'],
+
+  // Changing a spot, and one spot per time slot
+  switchSpot: ['change', 'changer'],
+  switchTitle: ['Change your spot', 'Changer de place'],
+  switchFrom: ['You are on {sport} — {list} ({session}). Pick where to move.', 'Vous êtes sur {sport} — {list} ({session}). Choisissez où aller.'],
+  switchNote: ['You keep your spot for the night — you just move to the other list. The new list takes you at the end, and your old spot goes to whoever is next on its waitlist.', 'Vous gardez votre place pour la soirée — vous changez simplement de liste. La nouvelle liste vous prend à la fin, et votre ancienne place revient au prochain sur la liste d\u2019attente.'],
+  switched: ['Moved to {sport} — {list}', 'Déplacé vers {sport} — {list}'],
+  nowhereToSwitch: ['Nothing else to switch to right now.', 'Rien d\u2019autre où aller pour l\u2019instant.'],
+  slotTaken: ['already in this time slot', 'déjà inscrit à cette heure'],
+  onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
 
   // Playing level (exec-assigned, exec-visible)
   levelLbl: ['Playing level', 'Niveau de jeu'],

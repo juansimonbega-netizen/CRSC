@@ -243,6 +243,26 @@ function canSelfJoin(list) {
 }
 
 /*
+ * The time slots this device already holds a spot in.
+ *
+ * One person, one spot per slot: nobody plays two lists at 7:30, and a
+ * second name in the same hour is a confirmed place the club cannot fill
+ * and a head it counts twice. Different slots are fine and expected — the
+ * 4h volleyball bundle is exactly that, and so is basketball then
+ * volleyball. `exceptId` lets a sign-up ignore its own slot while it is
+ * being moved out of it.
+ */
+function mySessionIds(ev, exceptId = null) {
+  const out = new Set();
+  for (const su of mySignups(ev.id)) {
+    if (su.id === exceptId) continue;
+    const l = listById(ev, su.listId);
+    if (l) out.add(l.sessionId);
+  }
+  return out;
+}
+
+/*
  * The lists a pass holder is seated in every week — sport + time slot +
  * level, matched by name so it follows the player into each new Saturday.
  * A 2h pass holds one; a 4h pass can hold one in each time slot.
@@ -1419,7 +1439,8 @@ function renderEvent(ev) {
           ${mine.map(m => {
             const l = listById(ev, m.listId);
             const sess = l ? sessionById(ev, l.sessionId) : null;
-            return `<span class="chip chip-mine">${esc(SPORTS[l?.sport]?.label || '')} ${esc(l ? l.label : '?')}${sess ? ' · ' + esc(sess.label) : ''}</span>`;
+            return `<span class="chip chip-mine">${esc(SPORTS[l?.sport]?.label || '')} ${esc(l ? l.label : '?')}${sess ? ' · ' + esc(sess.label) : ''}</span>${
+              isOpen ? `<button class="btn btn-tiny btn-ghost" data-switch="${esc(m.id)}">${esc(t('switchSpot'))}</button>` : ''}`;
           }).join('')}
           ${mine.some(m => !m.paid && !coveredSet.has(m.id)) ? `<button class="btn btn-small btn-warn" id="btn-how-pay">${esc(t('howToPay'))}</button>` : (mine.every(m => coveredSet.has(m.id)) ? passChipHtml(playerPass(DEVICE)) : `<span class="chip chip-paid">${esc(t('allPaid'))}</span>`)}
           ${ev.date === todayStr() && isOpen ? (mine.every(m => m.checkedIn)
@@ -1454,6 +1475,10 @@ function renderEvent(ev) {
       await removeSignup(ev, su, 'self');
       toast(t('removedSelf'));
     }
+  }));
+  $$('[data-switch]').forEach(b => b.addEventListener('click', () => {
+    const su = mySignups(ev.id).find(x => x.id === b.dataset.switch);
+    if (su) openSwitchSheet(ev, su);
   }));
   $('#btn-find')?.addEventListener('click', () => openFindModal(ev));
   $('#btn-how-pay')?.addEventListener('click', () => openPayInfoModal(ev));
@@ -1561,6 +1586,61 @@ function openProfileModal() {
   });
 }
 
+/*
+ * Change a spot: a different sport, or a different hour, without leaving the
+ * event and coming back. Removing and re-joining worked, but it filed a
+ * removal against the player in the proof trail — the record that exists to
+ * show who walked away from a game they owed for — and switching lists is
+ * not that.
+ *
+ * The new list takes them at the back, because the people already on it were
+ * there first. The slot they leave promotes whoever was next, exactly as a
+ * removal would.
+ */
+function openSwitchSheet(ev, su) {
+  const cur = listById(ev, su.listId);
+  const busy = mySessionIds(ev, su.id);     // their other spots, not this one
+  const options = (ev.sessions || []).map(sess => {
+    const lists = (ev.lists || []).filter(l =>
+      l.sessionId === sess.id && l.id !== su.listId && canSelfJoin(l) && !busy.has(sess.id));
+    if (!lists.length) return '';
+    return `
+      <div class="join-session">
+        <div class="join-session-label">${esc(sess.label)}</div>
+        ${lists.map(l => {
+          const { confirmed } = splitByCap(listEntries(ev.id, l.id), l.cap || 0);
+          const full = confirmed.length >= (l.cap || 0);
+          const sport = SPORTS[l.sport] || SPORTS.other;
+          return `
+            <button class="join-list switch-opt" data-to="${esc(l.id)}">
+              <span class="grow">${esc(sport.label)} — ${esc(l.label)}</span>
+              ${full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>`
+                     : `<span class="chip chip-muted">${esc(t('spotsLeft', { n: (l.cap || 0) - confirmed.length }))}</span>`}
+            </button>`;
+        }).join('')}
+      </div>`;
+  }).join('');
+
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('switchTitle'))}</h2>
+      <p class="hint">${esc(t('switchFrom', {
+        sport: SPORTS[cur?.sport]?.label || '', list: cur?.label || '',
+        session: sessionById(ev, cur?.sessionId)?.label || '',
+      }))}</p>
+      ${options || `<p class="hint">${esc(t('nowhereToSwitch'))}</p>`}
+      <p class="hint">${esc(t('switchNote'))}</p>
+      <button class="btn btn-ghost wide" data-close>${esc(t('cancel'))}</button>
+    </div>`);
+
+  $$('[data-to]', ov).forEach(b => b.addEventListener('click', async () => {
+    const to = listById(ev, b.dataset.to);
+    await moveSignup(ev, su, b.dataset.to);
+    ov.remove();
+    toast(t('switched', { sport: SPORTS[to?.sport]?.label || '', list: to?.label || '' }));
+  }));
+}
+
 function openJoinSheet(ev, preselectedListId) {
   const wanted = preselectedListId && listById(ev, preselectedListId);
   if (wanted && !canSelfJoin(wanted)) { toast(t('levelBlocked'), 'err'); return; }
@@ -1568,9 +1648,11 @@ function openJoinSheet(ev, preselectedListId) {
   const myIds = new Set(mySignups(ev.id).map(m => m.listId));
   const s = state.settings;
 
+  const busySessions = mySessionIds(ev);
   const listCheckboxes = (ev.sessions || []).map(sess => {
     const lists = (ev.lists || []).filter(l => l.sessionId === sess.id && !myIds.has(l.id));
     if (!lists.length) return '';
+    const taken = busySessions.has(sess.id);
     return `
       <div class="join-session">
         <div class="join-session-label">${esc(sess.label)}</div>
@@ -1581,12 +1663,13 @@ function openJoinSheet(ev, preselectedListId) {
           // Levels above the player's grade stay visible but locked. Hiding
           // them would just prompt "where did Advanced + go?" — this says
           // the spot exists and who to ask for it.
-          const barred = !canSelfJoin(l);
+          const barred = !canSelfJoin(l) || taken;
           return `
-            <label class="join-list ${full ? 'join-full' : ''} ${barred ? 'join-barred' : ''}">
-              <input type="checkbox" data-list="${esc(l.id)}" ${barred ? 'disabled' : ''} ${l.id === preselectedListId && !barred ? 'checked' : ''}>
+            <label class="join-list ${full ? 'join-full' : ''} ${barred ? 'join-barred' : ''}" data-session="${esc(sess.id)}">
+              <input type="checkbox" data-list="${esc(l.id)}" data-sess="${esc(sess.id)}" ${barred ? 'disabled' : ''} ${l.id === preselectedListId && !barred ? 'checked' : ''}>
               <span class="grow">${esc(sport.label)} — ${esc(l.label)}</span>
-              ${barred ? `<span class="chip chip-muted">${esc(t('askExec'))}</span>`
+              ${taken ? `<span class="chip chip-muted">${esc(t('slotTaken'))}</span>`
+                : !canSelfJoin(l) ? `<span class="chip chip-muted">${esc(t('askExec'))}</span>`
                 : full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>` : ''}
             </label>`;
         }).join('')}
@@ -1635,6 +1718,17 @@ function openJoinSheet(ev, preselectedListId) {
       ? `<p>${esc(t('etransferTo'))} <strong>${esc(s.etransferEmail)}</strong><br><small>${esc(t('mentionName'))}</small></p>`
       : `<p>${esc(t('bringCash'))} <small>${esc(s.lateFeeNote || '')}</small></p>`;
   }
+  // Ticking a second list in a slot unticks the first: the sheet enforces
+  // one-per-slot as you go, instead of refusing at the end.
+  $$('input[data-list]', ov).forEach(box => box.addEventListener('change', () => {
+    if (!box.checked) return;
+    for (const other of $$('input[data-list]', ov)) {
+      if (other !== box && other.checked && other.dataset.sess === box.dataset.sess) {
+        other.checked = false;
+        toast(t('onePerSlot'), 'warn');
+      }
+    }
+  }));
   $$('input[data-list], input[name="paym"]', ov).forEach(i => i.addEventListener('change', refreshPrice));
   refreshPrice();
 
@@ -1645,6 +1739,10 @@ function openJoinSheet(ev, preselectedListId) {
     if (!chosen.length) { toast(t('pickOne'), 'err'); return; }
     // The checkbox is disabled, but never trust the form alone.
     if (chosen.some(id => !canSelfJoin(listById(ev, id)))) { toast(t('levelBlocked'), 'err'); return; }
+    const slots = chosen.map(id => listById(ev, id)?.sessionId);
+    if (slots.some((x, i) => slots.indexOf(x) !== i) || slots.some(x => busySessions.has(x))) {
+      toast(t('onePerSlot'), 'err'); return;
+    }
     const method = $('input[name="paym"]:checked', ov).value;
     saveProfile(np);
     registerPlayer(np);

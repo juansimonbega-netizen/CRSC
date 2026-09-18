@@ -191,6 +191,25 @@ from claiming it again, so an exec's correction is never overwritten.
 
 (The outgoing mailer lives in [`apps-script/mailer.gs`](apps-script/mailer.gs).)
 
+## One spot per time slot, and changing it
+
+A player can hold **one list per time slot**. Two names at 7:30 is one body
+in two places: a confirmed spot the club cannot fill and a head it counts
+twice. Two *different* slots are fine and expected — that is the 4h
+volleyball bundle, and it is also basketball at 5:30 then volleyball at 7:30.
+
+The sign-up sheet enforces it as you go: ticking a second list in a slot
+unticks the first and says why, and a slot already taken shows "already in
+this time slot" rather than quietly vanishing. Submitting re-checks, because
+a disabled checkbox is a hint and not a guarantee.
+
+**Change** on each of your spots moves you to another sport or hour without
+leaving the event. Removing and re-joining did work, but it filed a removal
+against the player in the proof trail — the record that exists to show who
+walked away from a game they owed for — and switching lists is not that. The
+new list takes you at the end, since the people on it were there first, and
+the spot you leave promotes whoever was next on its waitlist.
+
 ## Playing levels
 
 Volleyball is graded in four steps — **Intermediate**, **Advanced**,
