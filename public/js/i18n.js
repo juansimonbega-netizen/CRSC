@@ -117,6 +117,9 @@ const STRINGS = {
   switched: ['Moved to {sport} — {list}', 'Déplacé vers {sport} — {list}'],
   nowhereToSwitch: ['Nothing else to switch to right now.', 'Rien d\u2019autre où aller pour l\u2019instant.'],
   slotTaken: ['already in this time slot', 'déjà inscrit à cette heure'],
+  execDupWarn: ['{name} is already on a list in this time slot. Add them again anyway?', '{name} est déjà sur une liste à cette heure. L\u2019ajouter quand même?'],
+  addAnyway: ['Add anyway', 'Ajouter quand même'],
+  alreadyOnList: ['You are already signed up for that time slot.', 'Vous êtes déjà inscrit à cette plage horaire.'],
   onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
 
   // Playing level (exec-assigned, exec-visible)

@@ -148,8 +148,41 @@ function splitByCap(entries, cap) {
   return { confirmed: entries.slice(0, cap), waitlist: entries.slice(cap) };
 }
 
+/*
+ * Who a sign-up belongs to.
+ *
+ * Email first, device second. A device id changes when somebody clears
+ * their browser, picks up the site on a second phone, or registers twice by
+ * accident — and every "are you already on this list" check that keyed off
+ * the device then failed open, which is how one person ended up on the same
+ * list three times. Email is the thing that follows the human.
+ */
+function identityOf(x) {
+  const email = (x.email || '').trim().toLowerCase();
+  if (email) return 'e:' + email;
+  if (x.deviceId && x.deviceId !== 'exec-added') return 'd:' + x.deviceId;
+  return 'n:' + (x.name || '').trim().toLowerCase();
+}
+
+function myIdentity() {
+  const p = getProfile();
+  return identityOf({ email: p?.email, deviceId: DEVICE, name: p?.name });
+}
+
+/* This person's spots, however many devices or profiles they have made. */
 function mySignups(eventId) {
-  return eventSignups(eventId).filter(s => s.deviceId === DEVICE);
+  const me = myIdentity();
+  return eventSignups(eventId).filter(s => identityOf(s) === me);
+}
+
+/* Everyone already in this time slot, by identity. */
+function identitiesInSession(ev, sessionId) {
+  const out = new Set();
+  for (const su of eventSignups(ev.id)) {
+    const l = listById(ev, su.listId);
+    if (l && l.sessionId === sessionId) out.add(identityOf(su));
+  }
+  return out;
 }
 
 function listById(event, listId) {
@@ -408,8 +441,10 @@ function pricesSummary(ev) {
   return parts.join('&ensp;·&ensp;');
 }
 
+/* One human, one bill. Keyed the same way as everything else, so somebody
+ * with two profiles is not charged twice or chased twice. */
 function personKey(s) {
-  return s.deviceId !== 'exec-added' && s.deviceId ? s.deviceId + '|' + s.name.toLowerCase() : 'name|' + s.name.toLowerCase();
+  return identityOf(s);
 }
 
 /*
@@ -1704,9 +1739,8 @@ function openFriendSheet(ev) {
     const existing = findPlayerByEmail(email);
     const friendDevice = existing ? existing.deviceId : 'friend:' + email.toLowerCase();
     // And they must not end up twice on the same night.
-    const theirs = eventSignups(ev.id).filter(su => su.deviceId === friendDevice);
-    const theirSlots = new Set(theirs.map(su => listById(ev, su.listId)?.sessionId));
-    if (chosen.some(id => theirSlots.has(listById(ev, id)?.sessionId))) {
+    const theirId = identityOf({ email, deviceId: friendDevice, name });
+    if (chosen.some(id => identitiesInSession(ev, listById(ev, id)?.sessionId).has(theirId))) {
       toast(t('friendAlreadyIn', { name }), 'err'); return;
     }
 
@@ -1895,7 +1929,9 @@ function openJoinSheet(ev, preselectedListId) {
   $$('input[data-list], input[name="paym"]', ov).forEach(i => i.addEventListener('change', refreshPrice));
   refreshPrice();
 
+  let joining = false;
   $('#join-confirm', ov).addEventListener('click', async () => {
+    if (joining) return;                       // double tap on a slow phone
     const np = readProfileFields(ov);
     if (!np) return;
     const chosen = $$('input[data-list]:checked', ov).map(c => c.dataset.list);
@@ -1903,8 +1939,13 @@ function openJoinSheet(ev, preselectedListId) {
     // The checkbox is disabled, but never trust the form alone.
     if (chosen.some(id => !canSelfJoin(listById(ev, id)))) { toast(t('levelBlocked'), 'err'); return; }
     const slots = chosen.map(id => listById(ev, id)?.sessionId);
-    if (slots.some((x, i) => slots.indexOf(x) !== i) || slots.some(x => busySessions.has(x))) {
-      toast(t('onePerSlot'), 'err'); return;
+    if (slots.some((x, i) => slots.indexOf(x) !== i)) { toast(t('onePerSlot'), 'err'); return; }
+    // Re-check against the list as it is right now, not as it was when this
+    // sheet was drawn: another tab, another phone, or a second tap on this
+    // button may have put them on it since.
+    const meId = identityOf({ email: np.email, deviceId: DEVICE, name: np.name });
+    for (const sid of slots) {
+      if (identitiesInSession(ev, sid).has(meId)) { toast(t('alreadyOnList'), 'err'); return; }
     }
     const method = $('input[name="paym"]:checked', ov).value;
     saveProfile(np);
@@ -1928,6 +1969,8 @@ function openJoinSheet(ev, preselectedListId) {
       createdAt: now + i,
       addedByExec: false,
     }));
+    joining = true;
+    $('#join-confirm', ov).disabled = true;
     try {
       await store.addSignups(ev.id, signups);
       ov.remove();
@@ -1937,6 +1980,9 @@ function openJoinSheet(ev, preselectedListId) {
     } catch (err) {
       console.error(err);
       toast(t('errGeneric'), 'err');
+      joining = false;
+      const btn = $('#join-confirm', ov);
+      if (btn) btn.disabled = false;
     }
   });
 }
@@ -2204,11 +2250,15 @@ function openExecAddModal(ev, listId) {
   $('#ea-save', ov).addEventListener('click', async () => {
     const name = $('#ea-name', ov).value.trim();
     if (!name) { toast(t('nameReq'), 'err'); return; }
+    const email = $('#ea-email', ov).value.trim();
+    const who = identityOf({ email, deviceId: 'exec-added', name });
+    if (identitiesInSession(ev, l?.sessionId).has(who)
+        && !await confirmModal(t('execDupWarn', { name }), t('addAnyway'))) return;
     await store.addSignups(ev.id, [{
       id: uid('su'),
       listId,
       name,
-      email: $('#ea-email', ov).value.trim(),
+      email,
       phone: '',
       insta: $('#ea-insta', ov).value.trim().replace(/^@/, ''),
       photo: '',
