@@ -126,6 +126,27 @@ const STRINGS = {
   levelSet: ['{name} graded {level}', '{name} classé {level}'],
   levelCleared: ['{name} is no longer graded', '{name} n\u2019est plus classé'],
   askExec: ['ask an exec', 'demander à un exec'],
+  // Bringing a friend
+  addFriendBtn: ['\uFF0B Add someone else', '\uFF0B Ajouter quelqu\u2019un'],
+  addFriendTitle: ['Add someone else', 'Ajouter quelqu\u2019un'],
+  addFriendHint: ['Sign up a friend with their own name and email, so they get their own confirmation and reminders. They can only go up to your level ({level}) — an exec can move them after that.', 'Inscrivez un ami avec son nom et son courriel : il recevra ses propres confirmations et rappels. Il ne peut aller que jusqu\u2019à votre niveau ({level}) — un exec pourra le déplacer ensuite.'],
+  friendNamePh: ['Their full name *', 'Son nom complet *'],
+  friendEmailPh: ['Their email *', 'Son courriel *'],
+  addFriendPayNote: ['They are billed separately. If you are paying for them, put both names in the e-transfer message.', 'Il est facturé séparément. Si vous payez pour lui, indiquez les deux noms dans le message du virement.'],
+  addFriendGo: ['Add them', 'L\u2019ajouter'],
+  friendAdded: ['{name} is on the list', '{name} est sur la liste'],
+  friendAlreadyIn: ['{name} is already signed up for that time slot.', '{name} est déjà inscrit à cette plage horaire.'],
+  nothingOpenForFriend: ['Nothing you can add them to right now.', 'Rien où l\u2019ajouter pour l\u2019instant.'],
+  broughtBy: ['added by {name}', 'ajouté par {name}'],
+
+  askSent: ['asked \u2713', 'demandé \u2713'],
+  askSentToast: ['Your request went to the execs. They will grade you and you can sign up.', 'Votre demande est partie aux execs. Ils vous classeront et vous pourrez vous inscrire.'],
+  askSentOffline: ['Could not send just now — message an exec directly.', 'Envoi impossible pour l\u2019instant — écrivez directement à un exec.'],
+  emailAskSubject: ['CRSC — {name} is asking to play a higher level', 'CRSC — {name} demande à jouer à un niveau supérieur'],
+  emailAskBody: [
+    '{name} would like to sign up for:\n{wants} — {date}\n\nTheir current grade: {level}\n\nContact:\n{email}\n{phone}\n\nIf they belong at that level, set it on their profile in the app (tap their name \u2192 Playing level) and they can sign themselves up.\n\n\u2014 {club}',
+    '{name} aimerait s\u2019inscrire à :\n{wants} — {date}\n\nNiveau actuel : {level}\n\nContact :\n{email}\n{phone}\n\nSi ce niveau lui convient, réglez-le sur son profil dans l\u2019app (touchez son nom \u2192 Niveau de jeu) et il pourra s\u2019inscrire.\n\n\u2014 {club}',
+  ],
   levelBlocked: ['That level is above your grade — talk to an exec and they can add you.', 'Ce niveau est au-dessus de votre classement — parlez-en à un exec, il peut vous ajouter.'],
 
   // Season pass: held spots, level, automatic tagging
@@ -208,6 +229,8 @@ const STRINGS = {
 
   /* profile portability */
   haveProfile: ['I already have a profile', 'J\'ai d\u00e9j\u00e0 un profil'],
+  emailTakenTitle: ['That email is already registered', 'Ce courriel est déjà inscrit'],
+  emailTakenHint: ['{email} already belongs to a profile here ({name}). You do not need a second one — pick up the one you have and this device gets your spots, your level and your payments.', '{email} appartient déjà à un profil ({name}). Pas besoin d\u2019en créer un deuxième — récupérez le vôtre et cet appareil retrouvera vos places, votre niveau et vos paiements.'],
   restoreTitle: ['Find my profile', 'Retrouver mon profil'],
   restoreHint: ['Enter the email you signed up with and this device picks up your profile, your spots and your payments.', 'Entrez le courriel utilis\u00e9 lors de votre inscription : cet appareil r\u00e9cup\u00e8re votre profil, vos places et vos paiements.'],
   restoreBtn: ['Find me', 'Me retrouver'],
@@ -238,114 +261,6 @@ const STRINGS = {
   /* self check-in */
   imHere: ['I\'m here — check in', 'Je suis là — j\'arrive'],
   selfCheckedIn: ['Checked in ✓', 'Présence confirmée ✓'],
-  undo: ['Undo', 'Annuler'],
-
-  // Recording an amount that is not the list price
-  gotPaidLbl: ['Received a different amount?', 'Montant reçu différent?'],
-  record: ['Record', 'Enregistrer'],
-  clear: ['Clear', 'Effacer'],
-  amountRecorded: ['{amount} recorded for {name}', '{amount} enregistré pour {name}'],
-  amountCleared: ['Amount cleared', 'Montant effacé'],
-  badAmount: ['That is not a number', 'Ce n\u2019est pas un nombre'],
-  stillOwesNight: ['Still owes {amount} tonight (billed {billed})', 'Doit encore {amount} ce soir (facturé {billed})'],
-  settledWith: ['Settled — {amount} received', 'Réglé — {amount} reçu'],
-  nothingOwed: ['Nothing owed tonight', 'Rien à payer ce soir'],
-  partOf: ['of it', 'de la somme'],
-  shortBy: ['{amount} short', 'manque {amount}'],
-  partPaidTitle: ['{amount} received, still short', '{amount} reçu, il manque le reste'],
-
-  // The record of a Saturday that has been played
-  recordBanner: ['This Saturday has been played. Below is the club\u2019s record of it — players only see upcoming weeks.', 'Ce samedi a eu lieu. Voici le registre du club — les joueurs ne voient que les semaines à venir.'],
-  signedUp: ['signed up', 'inscrits'],
-  showedUp: ['showed up', 'présents'],
-  didNotShow: ['no-shows', 'absents'],
-  didNotShowTitle: ['Had a spot, never checked in ({n})', 'Place réservée, jamais présents ({n})'],
-  playedCount: ['{n} played', '{n} ont joué'],
-
-  // Past weeks: the club's record
-  loadingWeek: ['loading…', 'chargement…'],
-  exportSeason: ['Export the whole season (CSV)', 'Exporter toute la saison (CSV)'],
-  seasonExported: ['{n} week(s) exported', '{n} semaine(s) exportée(s)'],
-  archiveNote: ['Every past Saturday is kept as the club\u2019s record — who played, who paid, who was checked in, who took their name off. Only execs can see them, and a Saturday that has been played cannot be deleted.', 'Chaque samedi passé est conservé comme registre du club — qui a joué, qui a payé, qui était présent, qui a retiré son nom. Visible seulement par les execs, et un samedi joué ne peut pas être supprimé.'],
-  cannotDeletePast: ['{date} has already been played and {n} sign-up(s) are recorded on it. It is the club\u2019s record of that night and cannot be deleted.', 'Le {date} a déjà eu lieu et {n} inscription(s) y sont enregistrées. C\u2019est le registre du club pour cette soirée et il ne peut pas être supprimé.'],
-  ok: ['OK', 'OK'],
-
-  // Changing a spot, and one spot per time slot
-  switchSpot: ['change', 'changer'],
-  switchTitle: ['Change your spot', 'Changer de place'],
-  switchFrom: ['You are on {sport} — {list} ({session}). Pick where to move.', 'Vous êtes sur {sport} — {list} ({session}). Choisissez où aller.'],
-  switchNote: ['You keep your spot for the night — you just move to the other list. The new list takes you at the end, and your old spot goes to whoever is next on its waitlist.', 'Vous gardez votre place pour la soirée — vous changez simplement de liste. La nouvelle liste vous prend à la fin, et votre ancienne place revient au prochain sur la liste d\u2019attente.'],
-  switched: ['Moved to {sport} — {list}', 'Déplacé vers {sport} — {list}'],
-  nowhereToSwitch: ['Nothing else to switch to right now.', 'Rien d\u2019autre où aller pour l\u2019instant.'],
-  slotTaken: ['already in this time slot', 'déjà inscrit à cette heure'],
-  onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
-
-  // Playing level (exec-assigned, exec-visible)
-  levelLbl: ['Playing level', 'Niveau de jeu'],
-  noLevel: ['Not graded', 'Non classé'],
-  levelModalHint: ['Once graded, this player can only sign themselves up for this level and below. Execs can still place them anywhere by hand.', 'Une fois classé, ce joueur ne peut s\u2019inscrire qu\u2019à ce niveau et aux niveaux inférieurs. Les execs peuvent toujours le placer manuellement.'],
-  levelSet: ['{name} graded {level}', '{name} classé {level}'],
-  levelCleared: ['{name} is no longer graded', '{name} n\u2019est plus classé'],
-  askExec: ['ask an exec', 'demander à un exec'],
-  levelBlocked: ['That level is above your grade — talk to an exec and they can add you.', 'Ce niveau est au-dessus de votre classement — parlez-en à un exec, il peut vous ajouter.'],
-
-  // Season pass: held spots, level, automatic tagging
-  passModalHint: ['Set the season pass and the level this spot is held in. A held spot is added to every Saturday automatically.', 'Choisissez la passe de saison et le niveau où la place est réservée. Une place réservée est ajoutée à chaque samedi automatiquement.'],
-  noPass: ['No pass', 'Aucune passe'],
-  heldSpotLbl: ['Spot held in', 'Place réservée dans'],
-  heldSpotNote: ['Pick one list for a 2H pass, or one per time slot for 4H. If they cannot come, remove their name for that week — it will not come back.', 'Choisissez une liste pour la passe 2H, ou une par plage horaire pour la 4H. En cas d\u2019absence, retirez leur nom pour cette semaine — il ne reviendra pas.'],
-  setPass: ['Set season pass', 'Définir la passe'],
-  passSetTo: ['Season pass · {type}', 'Passe de saison · {type}'],
-  passSeated: ['{n} held spot(s) added for pass holders', '{n} place(s) réservée(s) ajoutée(s)'],
-  passAutoToast: ['{name} got the {type} season pass automatically', '{name} a reçu la passe {type} automatiquement'],
-  heldChip: ['HELD', 'RÉSERVÉ'],
-
-  // Exec: find a player inside an event
-  findPlayer: ['Find player', 'Trouver un joueur'],
-  findTitle: ['Find a player', 'Trouver un joueur'],
-  findPh: ['Type a name, @handle, email or phone', 'Nom, @pseudo, courriel ou téléphone'],
-  findEmpty: ['Start typing to search every list in this event.', 'Commencez à taper pour chercher dans toutes les listes.'],
-  confirmedSpot: ['confirmed', 'confirmé'],
-  onWaitlist: ['waitlist #{n}', 'liste d\u2019attente #{n}'],
-  paidChip: ['PAID', 'PAYÉ'],
-  unpaidChip: ['UNPAID', 'IMPAYÉ'],
-  inChip: ['IN', 'PRÉSENT'],
-  outChip: ['NOT IN', 'ABSENT'],
-
-  // Pipeline test transfers
-  testTitle: ['Test transfer received \u2713', 'Virement test reçu \u2713'],
-  testOk: ['The e-transfer pipeline works', 'La chaîne de virements fonctionne'],
-  testFrom: ['from {sender} · {amount} · read from Gmail and filed here', 'de {sender} · {amount} · lu depuis Gmail et enregistré ici'],
-  testNote: ['A transfer of exactly {amount} is treated as a test: it proves Gmail → database → this screen works, and never marks anyone paid. Dismiss with \u2715.', 'Un virement d\u2019exactement {amount} est un test : il prouve que Gmail → base de données → cet écran fonctionne, sans marquer personne payé. Rejeter avec \u2715.'],
-
-  // Policies
-  policiesLink: ['Read the full Policies & FAQ \u2192', 'Lire les politiques et la FAQ \u2192'],
-  policiesUrlLbl: ['Policies & FAQ link', 'Lien des politiques et FAQ'],
-
-  // Money owed across the season, and no-shows
-  ledgerBtn: ['Money owed', 'Sommes dues'],
-  ledgerTitle: ['Money owed & no-shows', 'Sommes dues et absences'],
-  peopleOwing: ['people owing', 'personnes qui doivent'],
-  repeatNoShows: ['repeat no-shows', 'absences répétées'],
-  whoOwes: ['Who owes ({n})', 'Qui doit ({n})'],
-  owesAmount: ['owes {amount}', 'doit {amount}'],
-  nobodyOwes: ['Nobody owes anything. Everyone is square.', 'Personne ne doit rien. Tout est réglé.'],
-  noShowChip: ['{n} no-show(s)', '{n} absence(s)'],
-  noShowsTitle: ['Repeat no-shows ({n})', 'Absences répétées ({n})'],
-  noShowNote: ['Had a confirmed spot on a past Saturday and never checked in — a spot somebody on the waitlist could have used. Waitlisted players are never counted here.', 'Avaient une place confirmée un samedi passé sans jamais se présenter — une place qu\u2019un joueur en liste d\u2019attente aurait pu prendre. Les joueurs en attente ne sont jamais comptés ici.'],
-  chaseAll: ['Email all {n} of them', 'Envoyer un courriel aux {n}'],
-  chaseNote: ['Each person gets their own email with their own total — nobody is told what anyone else owes.', 'Chacun reçoit son propre courriel avec son propre total — personne n\u2019apprend ce que les autres doivent.'],
-  chaseConfirm: ['Email {n} people about the {total} they owe?', 'Envoyer un courriel à {n} personnes au sujet des {total} dus?'],
-  sendThem: ['Send', 'Envoyer'],
-  chaseSent: ['{n} reminder(s) sent', '{n} rappel(s) envoyé(s)'],
-  noEmails: ['None of them have an email on file', 'Aucun n\u2019a de courriel enregistré'],
-  mailerOff: ['Club email not connected', 'Courriel du club non connecté'],
-  exportLedger: ['Export CSV', 'Exporter (CSV)'],
-  emailOwedSubject: ['CRSC — Your outstanding balance', 'CRSC — Votre solde à payer'],
-  emailOwedBody: [
-    'Hey {name}!\n\nOur records show {total} still owing for CRSC:\n\n{nights}\n\nTo settle up, send an Interac e-transfer to {email} and put your name in the message.\n\nAlready paid? Let an exec know and we\u2019ll fix our records — no problem.\n\nThanks for playing with us!\n\n\u2014 {club}',
-    'Salut {name}!\n\nNos registres indiquent {total} à payer au CRSC :\n\n{nights}\n\nPour régler, envoyez un virement Interac à {email} en indiquant votre nom dans le message.\n\nDéjà payé? Dites-le à un exec et nous corrigerons nos registres — aucun souci.\n\nMerci de jouer avec nous!\n\n\u2014 {club}',
-  ],
   selfCheckedInToast: ['You\'re checked in — have a good game!', 'Présence confirmée — bonne partie!'],
   selfCheckOutToast: ['Check-in removed', 'Présence annulée'],
 
@@ -370,8 +285,8 @@ const STRINGS = {
   /* profile */
   yourProfile: ['Your profile', 'Votre profil'],
   profileHint: ['Saved on this device so next time is one tap.', 'Enregistré sur cet appareil — la prochaine fois, un seul clic.'],
-  namePh: ['Your name *', 'Votre nom *'],
-  emailPh: ['Email * (for waitlist updates)', 'Courriel * (pour la liste d\'attente)'],
+  namePh: ['Full name *', 'Nom complet *'],
+  emailPh: ['Email *', 'Courriel *'],
   phonePh: ['Phone (optional)', 'Téléphone (facultatif)'],
   instaPh: ['Instagram (optional, no @)', 'Instagram (facultatif, sans @)'],
   addPhoto: ['Add a photo (optional)', 'Ajouter une photo (facultatif)'],

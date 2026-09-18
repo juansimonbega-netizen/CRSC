@@ -846,12 +846,39 @@ function findPlayerByEmail(email) {
   return Object.values(state.players || {}).find(p => (p.email || '').toLowerCase() === e) || null;
 }
 
-function openRestoreModal() {
+/*
+ * Is this email already somebody else's? Matching your own record is fine —
+ * that is just editing your profile.
+ */
+function emailTakenBy(email, myDeviceId) {
+  const found = findPlayerByEmail(email);
+  return found && found.deviceId !== myDeviceId ? found : null;
+}
+
+/* Registering over an address that already exists: point them at the profile
+ * they already have rather than making a second one. */
+function openDuplicateEmailModal(existing, email) {
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('emailTakenTitle'))}</h2>
+      <p class="hint">${esc(t('emailTakenHint', { email, name: existing.name || '' }))}</p>
+      <div class="row gap">
+        <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
+        <button class="btn btn-primary grow" id="dup-restore">${esc(t('haveProfile'))}</button>
+      </div>
+    </div>`);
+  $('#dup-restore', ov).addEventListener('click', () => {
+    ov.remove();
+    openRestoreModal(email);
+  });
+}
+
+function openRestoreModal(prefill = '') {
   const ov = openModal(`
     <div class="modal-body">
       <h2>${esc(t('restoreTitle'))}</h2>
       <p class="hint">${esc(t('restoreHint'))}</p>
-      <input class="input" id="rs-email" type="email" placeholder="${esc(t('emailPh').replace(' *', ''))}" autofocus>
+      <input class="input" id="rs-email" type="email" placeholder="${esc(t('emailPh').replace(' *', ''))}" value="${esc(prefill)}" autofocus>
       <div class="row gap">
         <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
         <button class="btn btn-primary grow" id="rs-go">${esc(t('restoreBtn'))}</button>
@@ -984,10 +1011,12 @@ function renderWelcome() {
       <button class="btn btn-ghost wide" id="welcome-restore">${esc(t('haveProfile'))}</button>
     </div>`;
   wireProfileFields(document, null);
-  $('#welcome-restore').addEventListener('click', openRestoreModal);
+  $('#welcome-restore').addEventListener('click', () => openRestoreModal());
   $('#welcome-save').addEventListener('click', () => {
     const np = readProfileFields(document);
     if (!np) return;
+    const clash = emailTakenBy(np.email, DEVICE);
+    if (clash) { openDuplicateEmailModal(clash, np.email); return; }
     saveProfile(np);
     registerPlayer(np);
     toast(t('profileSaved'));
@@ -1284,7 +1313,8 @@ function entryRow(ev, s, { waitlistPos = null, exec = false, covered = false } =
       ${avatarHtml(s, 'avatar-sm')}
       <div class="grow entry-name">
         <span>${esc(s.name)} ${mine ? `<em>${esc(t('you'))}</em>` : ''}</span>
-        ${s.insta ? `<small>@${esc(s.insta)}</small>` : ''}
+        ${s.addedBy ? `<small>${esc(t('broughtBy', { name: s.addedBy }))}</small>`
+          : s.insta ? `<small>@${esc(s.insta)}</small>` : ''}
       </div>
       ${waitlistPos !== null ? `<span class="chip chip-wl">${esc(t('wlShort', { n: waitlistPos }))}</span>` : ''}
       ${exec ? levelChipHtml(s.deviceId) : ''}
@@ -1580,9 +1610,117 @@ function openProfileModal() {
   $('#pf-save', ov).addEventListener('click', () => {
     const np = readProfileFields(ov);
     if (!np) return;
+    const clash = emailTakenBy(np.email, DEVICE);
+    if (clash) { ov.remove(); openDuplicateEmailModal(clash, np.email); return; }
     saveProfile(np);
     registerPlayer(np);
     ov.remove(); toast(t('profileSaved')); render();
+  });
+}
+
+/*
+ * Bring a friend.
+ *
+ * The friend gets their own sign-up under their own name and email — not a
+ * "+1" on somebody else's row — so they can be emailed, reminded, checked in
+ * and chased like anyone else, and so the club is not guessing who actually
+ * turned up.
+ *
+ * They can only be put on a list the person adding them could join
+ * themselves. An ungraded member vouching for a friend cannot seat them above
+ * their own level, and the club still grades the friend properly afterwards.
+ * Their row carries who brought them, because the person who vouched is who
+ * an exec asks when a stranger does not show.
+ */
+function openFriendSheet(ev) {
+  const me = getProfile();
+  const myRank = playerLevel(DEVICE);
+  const busy = new Set();   // slots the FRIEND is in, filled as we go
+
+  const listsHtml = (ev.sessions || []).map(sess => {
+    const lists = (ev.lists || []).filter(l => l.sessionId === sess.id && canSelfJoin(l));
+    if (!lists.length) return '';
+    return `
+      <div class="join-session">
+        <div class="join-session-label">${esc(sess.label)}</div>
+        ${lists.map(l => {
+          const { confirmed } = splitByCap(listEntries(ev.id, l.id), l.cap || 0);
+          const full = confirmed.length >= (l.cap || 0);
+          const sport = SPORTS[l.sport] || SPORTS.other;
+          return `
+            <label class="join-list ${full ? 'join-full' : ''}">
+              <input type="checkbox" data-flist="${esc(l.id)}" data-fsess="${esc(sess.id)}">
+              <span class="grow">${esc(sport.label)} — ${esc(l.label)}</span>
+              ${full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>` : ''}
+            </label>`;
+        }).join('')}
+      </div>`;
+  }).join('');
+
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('addFriendTitle'))}</h2>
+      <p class="hint">${esc(t('addFriendHint', {
+        level: myRank ? levelByRank(myRank).label : t('noLevel'),
+      }))}</p>
+      <input class="input" id="fr-name" placeholder="${esc(t('friendNamePh'))}" maxlength="40">
+      <input class="input" id="fr-email" type="email" placeholder="${esc(t('friendEmailPh'))}" maxlength="80">
+      <h3 class="section-sub">${esc(t('pickLists'))}</h3>
+      ${listsHtml || `<p class="hint">${esc(t('nothingOpenForFriend'))}</p>`}
+      <h3 class="section-sub">${esc(t('payMethod'))}</h3>
+      <div class="row gap">
+        <label class="pay-opt"><input type="radio" name="fpaym" value="etransfer" checked> <span>${esc(t('etransfer'))}</span></label>
+        <label class="pay-opt"><input type="radio" name="fpaym" value="cash"> <span>${esc(t('cashOnSite'))}</span></label>
+      </div>
+      <p class="hint">${esc(t('addFriendPayNote'))}</p>
+      <div class="row gap">
+        <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
+        <button class="btn btn-primary grow" id="fr-go">${esc(t('addFriendGo'))}</button>
+      </div>
+    </div>`);
+
+  // One list per slot for the friend too — same body, same rule.
+  $$('input[data-flist]', ov).forEach(box => box.addEventListener('change', () => {
+    if (!box.checked) return;
+    for (const other of $$('input[data-flist]', ov)) {
+      if (other !== box && other.checked && other.dataset.fsess === box.dataset.fsess) {
+        other.checked = false;
+        toast(t('onePerSlot'), 'warn');
+      }
+    }
+  }));
+
+  $('#fr-go', ov).addEventListener('click', async () => {
+    const name = $('#fr-name', ov).value.trim();
+    const email = $('#fr-email', ov).value.trim();
+    if (!name) { toast(t('nameRequired'), 'err'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast(t('emailRequired'), 'err'); return; }
+    const chosen = $$('input[data-flist]:checked', ov).map(c => c.dataset.flist);
+    if (!chosen.length) { toast(t('pickOne'), 'err'); return; }
+    if (chosen.some(id => !canSelfJoin(listById(ev, id)))) { toast(t('levelBlocked'), 'err'); return; }
+
+    // One profile per email, friends included: if this address is already a
+    // member, adding them here would fork their record.
+    const existing = findPlayerByEmail(email);
+    const friendDevice = existing ? existing.deviceId : 'friend:' + email.toLowerCase();
+    // And they must not end up twice on the same night.
+    const theirs = eventSignups(ev.id).filter(su => su.deviceId === friendDevice);
+    const theirSlots = new Set(theirs.map(su => listById(ev, su.listId)?.sessionId));
+    if (chosen.some(id => theirSlots.has(listById(ev, id)?.sessionId))) {
+      toast(t('friendAlreadyIn', { name }), 'err'); return;
+    }
+
+    const method = $('input[name="fpaym"]:checked', ov).value;
+    const now = Date.now();
+    await store.addSignups(ev.id, chosen.map((listId, i) => ({
+      id: uid('su'), listId, name, email, phone: '', insta: '', photo: '',
+      deviceId: friendDevice, method, paid: false, checkedIn: false, team: null,
+      lang: getLang(), order: now + i, createdAt: now + i,
+      addedByExec: false, addedBy: me?.name || '', addedByDevice: DEVICE,
+    })));
+    ov.remove();
+    toast(t('friendAdded', { name }));
+    sendConfirmationEmail(ev, { name, email, lang: getLang() }, chosen, method);
   });
 }
 
@@ -1669,7 +1807,7 @@ function openJoinSheet(ev, preselectedListId) {
               <input type="checkbox" data-list="${esc(l.id)}" data-sess="${esc(sess.id)}" ${barred ? 'disabled' : ''} ${l.id === preselectedListId && !barred ? 'checked' : ''}>
               <span class="grow">${esc(sport.label)} — ${esc(l.label)}</span>
               ${taken ? `<span class="chip chip-muted">${esc(t('slotTaken'))}</span>`
-                : !canSelfJoin(l) ? `<span class="chip chip-muted">${esc(t('askExec'))}</span>`
+                : !canSelfJoin(l) ? `<button type="button" class="btn btn-tiny btn-ghost" data-ask="${esc(l.id)}">${esc(t('askExec'))}</button>`
                 : full ? `<span class="chip chip-wl">${esc(t('waitlist').toLowerCase())}</span>` : ''}
             </label>`;
         }).join('')}
@@ -1695,10 +1833,35 @@ function openJoinSheet(ev, preselectedListId) {
         <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
         <button class="btn btn-primary grow" id="join-confirm">${esc(t('confirmSignup'))}</button>
       </div>
+      <button class="btn btn-ghost wide" id="join-friend">${esc(t('addFriendBtn'))}</button>
       ${s.policiesUrl ? `<a class="policies-link" href="${esc(s.policiesUrl)}" target="_blank" rel="noopener">${esc(t('policiesLink'))}</a>` : ''}
     </div>`);
 
   wireProfileFields(ov, p);
+
+  $('#join-friend', ov)?.addEventListener('click', () => { ov.remove(); openFriendSheet(ev); });
+
+  // "Ask an exec" is a request, not a dead end: it mails the club with who is
+  // asking and which level, so an exec can grade them and they can sign up.
+  $$('[data-ask]', ov).forEach(b => b.addEventListener('click', async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const l = listById(ev, b.dataset.ask);
+    const me = getProfile();
+    const lvl = levelByRank(playerLevel(DEVICE));
+    b.disabled = true;
+    const r = await sendMail({
+      to: s.etransferEmail || '',
+      subject: tLang('en', 'emailAskSubject', { name: me?.name || '' }),
+      message: tLang('en', 'emailAskBody', {
+        name: me?.name || '', email: me?.email || '', phone: me?.phone || '-',
+        level: lvl ? lvl.label : tLang('en', 'noLevel'),
+        wants: `${SPORTS[l?.sport]?.label || ''} — ${l?.label || ''}`,
+        date: fmtDate(ev.date), club: s.clubFullName || 'CRSC',
+      }),
+    });
+    b.textContent = t('askSent');
+    toast(r.sent ? t('askSentToast') : t('askSentOffline'), r.sent ? 'ok' : 'warn');
+  }));
 
   function refreshPrice() {
     const method = $('input[name="paym"]:checked', ov).value;
