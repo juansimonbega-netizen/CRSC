@@ -17,6 +17,8 @@
  *   store.addSignups(eventId, [signup, ...])
  *   store.updateSignup(eventId, signupId, patch)
  *   store.deleteSignup(eventId, signupId)
+ *   store.savePlayer(player)    -> create or merge (player.deviceId required)
+ *   store.deletePlayer(deviceId)
  *
  * state = { settings, events: [...], signups: { [eventId]: [...] } }
  */
@@ -355,6 +357,10 @@ function createDemoStore() {
       state.players[player.deviceId] = { ...state.players[player.deviceId], ...player };
       persist();
     },
+    async deletePlayer(deviceId) {
+      delete state.players[deviceId];
+      persist();
+    },
     watchPlayers() {},
     watchPayments() {},
     watchRemovals() {},
@@ -465,6 +471,9 @@ async function createFirebaseStore(config) {
     async savePlayer(player) {
       const { deviceId, ...data } = player;
       await fs.setDoc(fs.doc(db, 'players', deviceId), data, { merge: true });
+    },
+    async deletePlayer(deviceId) {
+      await fs.deleteDoc(fs.doc(db, 'players', deviceId));
     },
     watchPlayers() {
       if (playersWatcher) return;
@@ -628,6 +637,9 @@ async function createArtifactDbStore() {
     async savePlayer(player) {
       const { deviceId, ...data } = player;
       await mergeWrite(db.doc('players/' + deviceId), data);
+    },
+    async deletePlayer(deviceId) {
+      await db.doc('players/' + deviceId).delete();
     },
     async saveDues(eventId, data) {
       await mergeWrite(db.doc('dues/' + eventId), data);

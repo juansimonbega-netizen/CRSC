@@ -923,10 +923,26 @@ async function removeSignup(ev, su, by = 'self') {
   await notifyPromotion(ev, promo);
 }
 
+/*
+ * Returns false and says why when the move would put them on a list they are
+ * already on — including its waitlist, which is just the back of that same
+ * list. The switch sheet already hides those options, but it was drawn at
+ * some point in the past: another phone, another tab, or an exec may have
+ * signed them up for that slot since. Every other way onto a list re-checks
+ * at the moment it writes, and this one now does too.
+ */
 async function moveSignup(ev, su, newListId) {
+  const to = listById(ev, newListId);
+  const who = identityOf(su);
+  if (!to) { toast(t('switchGone'), 'err'); return false; }
+  if (to.id !== su.listId && identitiesInSession(ev, to.sessionId).has(who)) {
+    toast(t('onePerSlot'), 'err');
+    return false;
+  }
   const promo = prePromotion(ev, su);
   await store.updateSignup(ev.id, su.id, { listId: newListId, team: null, order: Date.now() });
   await notifyPromotion(ev, promo);
+  return true;
 }
 
 /* ================================================================== */
@@ -1919,11 +1935,15 @@ function openSwitchSheet(ev, su) {
       <button class="btn btn-ghost wide" data-close>${esc(t('cancel'))}</button>
     </div>`);
 
+  let switching = false;
   $$('[data-to]', ov).forEach(b => b.addEventListener('click', async () => {
+    if (switching) return;                     // double tap on a slow phone
+    switching = true;
+    $$('[data-to]', ov).forEach(x => x.disabled = true);
     const to = listById(ev, b.dataset.to);
-    await moveSignup(ev, su, b.dataset.to);
+    const moved = await moveSignup(ev, su, b.dataset.to);
     ov.remove();
-    toast(t('switched', { sport: SPORTS[to?.sport]?.label || '', list: to?.label || '' }));
+    if (moved) toast(t('switched', { sport: SPORTS[to?.sport]?.label || '', list: to?.label || '' }));
   }));
 }
 
@@ -2324,7 +2344,15 @@ function openPlayerAdminModal(ev, su) {
     });
   });
   $('#pa-move', ov).addEventListener('change', async e => {
-    await moveSignup(ev, su, e.target.value);
+    const select = e.target;
+    select.disabled = true;
+    if (!await moveSignup(ev, su, select.value)) {
+      // Refused — put the menu back where it was rather than leaving it
+      // showing a list the player is not on.
+      select.value = su.listId;
+      select.disabled = false;
+      return;
+    }
     toast(t('moved', { name: su.name }));
     ov.remove();
   });
@@ -2728,6 +2756,56 @@ function openPassModal(player, onDone) {
   });
 }
 
+/*
+ * Retire an account.
+ *
+ * Someone who registers twice on two addresses is two people as far as the
+ * app can tell — nothing can merge them automatically, because nothing knows
+ * they are the same human. An exec does, so an exec has to be able to say so
+ * by deleting the account that should not exist.
+ *
+ * What goes and what stays:
+ *  - The account record goes, with its level and its season pass.
+ *  - Their spots on Saturdays still to come go too, held spots included, or
+ *    the pass would keep seating a person who no longer exists.
+ *  - Saturdays already played keep every row. That history is the club's
+ *    record of who was on the court and who owed for it, and deleting an
+ *    account is not a reason to lose it.
+ */
+function upcomingSignupsOf(player) {
+  const id = identityOf(player);
+  const out = [];
+  for (const ev of state.events) {
+    if (isPastEvent(ev) || !signupsLoaded(ev.id)) continue;
+    for (const su of eventSignups(ev.id)) {
+      if (identityOf(su) === id) out.push({ ev, su });
+    }
+  }
+  return out;
+}
+
+async function deletePlayerAccount(player) {
+  const spots = upcomingSignupsOf(player);
+  const isAccount = !!(state.players || {})[player.deviceId];
+  const key = !spots.length ? 'deleteAccountAsk'
+            : spots.length === 1 ? 'deleteAccountAskSpots' : 'deleteAccountAskSpotsN';
+  const ok = await confirmModal(
+    t(key, { name: player.name, n: spots.length }), t('deleteAccount'));
+  if (!ok) return false;
+  try {
+    // Spots first: an account with no rows left is tidier to fail on than
+    // rows left behind pointing at an account that is gone.
+    for (const { ev, su } of spots) await store.deleteSignup(ev.id, su.id);
+    if (isAccount) await store.deletePlayer(player.deviceId);
+    toast(t('accountDeleted', { name: player.name }));
+    return true;
+  } catch (err) {
+    console.error('delete account', err);
+    toast(t('accountDeleteFailed'), 'err');
+    return false;
+  }
+}
+
 function openPlayersModal() {
   const ov = openModal(`
     <div class="modal-body">
@@ -2762,11 +2840,18 @@ function openPlayersModal() {
         ${p.deviceId.startsWith('name:')
           ? (p.battlePass ? `<span class="chip chip-pass">${esc(p.battlePass.toUpperCase())}</span>` : '')
           : `<button class="btn btn-tiny ${p.battlePass ? 'btn-exec' : 'btn-ghost'}" data-pass="${i}" title="${esc(t('battlePassLbl'))}">${esc(p.battlePass ? 'PASS ' + p.battlePass.toUpperCase() : 'PASS')}</button>`}
+        <button class="btn btn-tiny btn-danger-ghost" data-del="${i}" title="${esc(t('deleteAccount'))}" aria-label="${esc(t('deleteAccount'))}">✕</button>
       </div>`).join('') || `<p class="hint">${esc(t('noMatches'))}</p>`;
     // Tap PASS to set the pass and the level the player's spot is held in.
     $$('[data-pass]', ov).forEach(b => b.addEventListener('click', () => {
       const p = players[+b.dataset.pass];
       openPassModal(p, (type) => { p.battlePass = type; renderList(); });
+    }));
+    $$('[data-del]', ov).forEach(b => b.addEventListener('click', async () => {
+      if (b.disabled) return;
+      b.disabled = true;
+      if (await deletePlayerAccount(players[+b.dataset.del])) renderList();
+      else b.disabled = false;
     }));
   }
   $('#pl-search', ov).addEventListener('input', renderList);

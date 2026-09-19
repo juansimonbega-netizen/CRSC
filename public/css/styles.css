@@ -151,6 +151,10 @@ a { color: var(--orange-dark); }
 .btn-primary { background: var(--orange); border-color: var(--orange-dark); color: #fff; }
 .btn-success { background: var(--green); border-color: var(--green); color: #fff; }
 .btn-danger { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+/* Quieter than btn-danger: it sits in a list of rows, so it must not
+   shout over the names it belongs to until you reach for it. */
+.btn-danger-ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); }
+.btn-danger-ghost:hover, .btn-danger-ghost:focus-visible { background: var(--red-soft); color: var(--red); border-color: var(--red); }
 .btn-warn { background: #f3e6c3; color: #7c5c07; border-color: #b98f14; }
 .btn-ghost { background: transparent; border-color: var(--line); }
 .btn-exec { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -185,7 +189,16 @@ select.input { appearance: auto; }
 
 /* ------- players directory ------- */
 .players-list { max-height: 55vh; }
-.player-row small { display: block; color: var(--ink-soft); font-size: 11px; word-break: break-all; }
+/* A directory row is one person on one line. The chips and the two buttons
+ * drop to a second line on a narrow phone rather than squeezing the name
+ * column: break-all on a long address used to wrap it one character per
+ * line and stretch the row to 400px tall. */
+.player-row { flex-wrap: wrap; row-gap: 4px; }
+.player-row .entry-name { flex: 1 1 60%; min-width: 0; }
+.player-row small {
+  display: block; color: var(--ink-soft); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* ------- profile ------- */
 .profile-strip {

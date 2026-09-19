@@ -121,6 +121,19 @@ const STRINGS = {
   addAnyway: ['Add anyway', 'Ajouter quand même'],
   alreadyOnList: ['You are already signed up for that time slot.', 'Vous êtes déjà inscrit à cette plage horaire.'],
   onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
+  switchGone: ['That list is no longer on this Saturday.', 'Cette liste n\u2019existe plus pour ce samedi.'],
+
+  // Retiring an account (execs only)
+  deleteAccount: ['Delete account', 'Supprimer le compte'],
+  // Two wordings rather than "1 spot(s)": an exec reads this at the door.
+  deleteAccountAsk: ['Delete {name}\u2019s account? Saturdays already played keep their record.',
+                     'Supprimer le compte de {name}? Les samedis d\u00e9j\u00e0 jou\u00e9s gardent leur historique.'],
+  deleteAccountAskSpots: ['Delete {name}\u2019s account? This also takes their {n} upcoming spot off, held spots included. Saturdays already played keep their record.',
+                          'Supprimer le compte de {name}? Cela retire aussi sa {n} place \u00e0 venir, places r\u00e9serv\u00e9es comprises. Les samedis d\u00e9j\u00e0 jou\u00e9s gardent leur historique.'],
+  deleteAccountAskSpotsN: ['Delete {name}\u2019s account? This also takes their {n} upcoming spots off, held spots included. Saturdays already played keep their record.',
+                           'Supprimer le compte de {name}? Cela retire aussi ses {n} places \u00e0 venir, places r\u00e9serv\u00e9es comprises. Les samedis d\u00e9j\u00e0 jou\u00e9s gardent leur historique.'],
+  accountDeleted: ['{name}\u2019s account is gone.', 'Le compte de {name} est supprim\u00e9.'],
+  accountDeleteFailed: ['Could not delete that account.', 'Impossible de supprimer ce compte.'],
 
   // Playing level (exec-assigned, exec-visible)
   levelLbl: ['Playing level', 'Niveau de jeu'],
