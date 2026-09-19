@@ -23,7 +23,11 @@ service cloud.firestore {
     // Player registry: one doc per device, written at registration.
     match /players/{playerId} {
       allow read: if true;
-      allow write: if
+      // A duplicate profile has to be removable. Without this the rule below
+      // refuses its own deletes: a delete carries no data, so the name check
+      // can never pass.
+      allow delete: if true;
+      allow create, update: if
         request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 60
