@@ -246,8 +246,42 @@ function cancellationLocked(ev) {
 
 /* Season Battle Pass (volleyball only): '4h' | '2h' | null, set by execs
  * on the player's registry entry. */
-function playerPass(deviceId) {
-  return (deviceId && (state.players || {})[deviceId]?.battlePass) || null;
+/*
+ * The club's record of a player, found by identity rather than by whichever
+ * device is asking.
+ *
+ * Somebody who registered twice has two player records on one email. A pass
+ * or a level set on one of them was invisible to sign-ups made from the
+ * other, so the pass covered their games some weeks and not others — which
+ * looks exactly like the app losing track of what they paid for. When two
+ * records share an identity, the one carrying a pass or a level wins: an
+ * exec set that deliberately, and the empty record is the accident.
+ */
+let playerIndex = null;
+function playerByIdentity(x) {
+  if (!playerIndex) {
+    playerIndex = {};
+    for (const p of Object.values(state.players || {})) {
+      const id = identityOf(p);
+      const cur = playerIndex[id];
+      if (!cur || (!cur.battlePass && p.battlePass) || (!cur.level && p.level)) playerIndex[id] = p;
+    }
+  }
+  return playerIndex[identityOf(x)] || null;
+}
+
+/* Accepts a device id (most call sites) or any object carrying an email. */
+function playerRecord(who) {
+  if (!who) return null;
+  if (typeof who === 'string') {
+    const direct = (state.players || {})[who];
+    return playerByIdentity(direct || { deviceId: who });
+  }
+  return playerByIdentity(who);
+}
+
+function playerPass(who) {
+  return playerRecord(who)?.battlePass || null;
 }
 
 /*
@@ -255,8 +289,8 @@ function playerPass(deviceId) {
  * a new member plays their first night wherever they like, and the club
  * decides afterwards where they belong.
  */
-function playerLevel(deviceId) {
-  const r = deviceId && (state.players || {})[deviceId]?.level;
+function playerLevel(who) {
+  const r = playerRecord(who)?.level;
   return r ? Number(r) : null;
 }
 
@@ -411,7 +445,7 @@ function coveredSignupIds(ev) {
   const byPerson = {};
   for (const su of eventSignups(ev.id)) (byPerson[personKey(su)] = byPerson[personKey(su)] || []).push(su);
   for (const sus of Object.values(byPerson)) {
-    const pass = playerPass(sus[0].deviceId);
+    const pass = playerPass(sus[0]);
     if (!pass) continue;
     const volley = sus
       .filter(s => listById(ev, s.listId)?.sport === 'volleyball')
@@ -483,7 +517,7 @@ function personTotals(ev) {
     persons[k].signups.push(su);
   }
   return Object.values(persons).map(p => {
-    const pass = playerPass(p.deviceId);
+    const pass = playerPass(p.signups?.[0] || p);
     // Money is owed per spot, so split the person's spots into what is
     // settled (paid, or covered by their pass) and what is still owed.
     // Someone who paid for volleyball but also signed up for basketball
@@ -665,7 +699,7 @@ async function runPaymentReminders() {
       for (const sus of Object.values(persons)) {
         const su = sus[0];
         const lang = su.lang === 'fr' ? 'fr' : 'en';
-        const { total } = computePrice(ev, sus.map(x => x.listId), su.method, playerPass(su.deviceId));
+        const { total } = computePrice(ev, sus.map(x => x.listId), su.method, playerPass(su));
         if (total === 0) continue;
         if (live) {
           // claim before sending so a second open tab can't double-send
@@ -737,7 +771,7 @@ async function notifyPromotion(ev, promo) {
       return;
     }
     const lang = cand.lang === 'fr' ? 'fr' : 'en';
-    const pass = playerPass(cand.deviceId);
+    const pass = playerPass(cand);
     const { total } = computePrice(ev, [list.id], cand.method, pass);
     await sendMail({
       to: cand.email,
@@ -771,7 +805,7 @@ async function logRemoval(ev, su, by) {
   const l = listById(ev, su.listId);
   const sess = l ? sessionById(ev, l.sessionId) : null;
   const covered = coveredSignupIds(ev).has(su.id);
-  const { total } = covered ? { total: 0 } : computePrice(ev, [su.listId], su.method, playerPass(su.deviceId));
+  const { total } = covered ? { total: 0 } : computePrice(ev, [su.listId], su.method, playerPass(su));
   const now = Date.now();
   const started = ev.date ? now >= new Date(ev.date + 'T17:00:00').getTime() : false;
   try {
@@ -976,6 +1010,7 @@ function route() {
 
 function render() {
   totalsCache = {};
+  playerIndex = null;
   const r = route();
   renderHeader();
   if (r.view === 'adopt') { adoptIdentity(r.payload); return; }
@@ -1298,8 +1333,8 @@ async function openSeason() {
 /* "Battle Pass 2H" / "Battle Pass 4H" chip. `short` fits narrow phone rows. */
 /* A player's grade, shown to execs only — like payment status, it is the
  * club's note about somebody, not a badge for the room to read. */
-function levelChipHtml(deviceId) {
-  const l = levelByRank(playerLevel(deviceId));
+function levelChipHtml(who) {
+  const l = levelByRank(playerLevel(who));
   return l ? `<span class="chip chip-level" title="${esc(l.label)}">${esc(l.short)}</span>` : '';
 }
 
@@ -1309,7 +1344,7 @@ function passChipHtml(type, short = false) {
 }
 
 function paymentChip(s, covered = false, short = false, settle = null) {
-  if (covered) return passChipHtml(playerPass(s.deviceId), short);
+  if (covered) return passChipHtml(playerPass(s), short);
   // Cash an exec recorded settles the person's whole night, which can cover a
   // spot whose own paid flag was never ticked.
   if (settle && settle.received > 0) {
@@ -1327,7 +1362,7 @@ function paymentChip(s, covered = false, short = false, settle = null) {
  * pass on their second slot, or another sport) so nobody gets asked twice.
  */
 function statusChips(s, covered, exec, settle = null) {
-  const pass = playerPass(s.deviceId);
+  const pass = playerPass(s);
   const here = exec && s.checkedIn
     ? `<span class="chip ${s.paid || covered ? 'chip-in-ok' : 'chip-in-warn'}">${esc(t('here'))}</span>`
     : '';
@@ -1352,7 +1387,7 @@ function entryRow(ev, s, { waitlistPos = null, exec = false, covered = false } =
           : s.insta ? `<small>@${esc(s.insta)}</small>` : ''}
       </div>
       ${waitlistPos !== null ? `<span class="chip chip-wl">${esc(t('wlShort', { n: waitlistPos }))}</span>` : ''}
-      ${exec ? levelChipHtml(s.deviceId) : ''}
+      ${exec ? levelChipHtml(s) : ''}
       ${exec || mine ? statusChips(s, covered, exec, personSettlement(ev, s)) : ''}
       ${mine && !exec && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cancel="${esc(s.id)}" title="${esc(t('remove'))}">✕</button>` : ''}
     </div>`;
@@ -2108,8 +2143,8 @@ function openPlayerAdminModal(ev, su) {
           ${LEVELS.map(l => `<button class="btn btn-small grow" data-level="${l.rank}" title="${esc(l.label)}">${esc(l.short)}</button>`).join('')}
         </div>
         <label class="field-label">${esc(t('battlePassLbl'))}</label>
-        <button class="btn btn-small wide ${playerPass(su.deviceId) ? 'btn-exec' : 'btn-ghost'}" id="pa-pass">
-          ${esc(playerPass(su.deviceId) ? t('passSetTo', { type: playerPass(su.deviceId).toUpperCase() }) : t('setPass'))}
+        <button class="btn btn-small wide ${playerPass(su) ? 'btn-exec' : 'btn-ghost'}" id="pa-pass">
+          ${esc(playerPass(su) ? t('passSetTo', { type: playerPass(su).toUpperCase() }) : t('setPass'))}
         </button>` : ''}
       <label class="field-label">${esc(t('moveTo'))}</label>
       <select class="input" id="pa-move">${listsOptions}</select>
@@ -2133,7 +2168,7 @@ function openPlayerAdminModal(ev, su) {
     const inBtn = $('#pa-in', ov);
     paidBtn.className = 'btn grow cb ' + (p ? onCls : (c ? 'cb-off' : 'cb-red'));
     inBtn.className = 'btn grow cb ' + (c ? onCls : (p ? 'cb-off' : 'cb-red'));
-    paidBtn.textContent = (p ? '☑ ' : '☐ ') + (coveredHere ? `${t('battlePass')} ${(playerPass(su.deviceId) || '').toUpperCase()}` : (p ? t('paid') : t('markPaid')));
+    paidBtn.textContent = (p ? '☑ ' : '☐ ') + (coveredHere ? `${t('battlePass')} ${(playerPass(su) || '').toUpperCase()}` : (p ? t('paid') : t('markPaid')));
     inBtn.textContent = (c ? '☑ ' : '☐ ') + (c ? t('checkedIn') : t('checkIn'));
     paidBtn.disabled = coveredHere;
   }
@@ -2192,7 +2227,7 @@ function openPlayerAdminModal(ev, su) {
     });
   }));
   const paintLevel = () => {
-    const now = playerLevel(su.deviceId);
+    const now = playerLevel(su);
     $$('#pa-level [data-level]', ov).forEach(b =>
       b.className = 'btn btn-small grow ' + ((Number(b.dataset.level) || null) === now ? 'btn-exec' : 'btn-ghost'));
   };
@@ -2204,7 +2239,7 @@ function openPlayerAdminModal(ev, su) {
 
   const passBtn = $('#pa-pass', ov);
   if (passBtn) passBtn.addEventListener('click', () => {
-    openPassModal({ deviceId: su.deviceId, name: su.name, battlePass: playerPass(su.deviceId) }, (type) => {
+    openPassModal({ deviceId: su.deviceId, email: su.email, name: su.name, battlePass: playerPass(su) }, (type) => {
       passBtn.className = 'btn btn-small wide ' + (type ? 'btn-exec' : 'btn-ghost');
       passBtn.textContent = type ? t('passSetTo', { type: type.toUpperCase() }) : t('setPass');
     });
@@ -2511,7 +2546,7 @@ function allPlayers() {
  * is how somebody moves up.
  */
 async function setPlayerLevel(player, rank) {
-  if (playerLevel(player.deviceId) === (rank || null)) return;
+  if (playerLevel(player) === (rank || null)) return;
   await store.savePlayer({ deviceId: player.deviceId, name: player.name, level: rank || null });
   const l = rank ? levelByRank(rank) : null;
   toast(l ? t('levelSet', { name: player.name, level: l.label }) : t('levelCleared', { name: player.name }));
@@ -2542,7 +2577,7 @@ function openPassModal(player, onDone) {
   const chosen = passLists(state.players[player.deviceId] || player).slice();
   const has = (l) => chosen.some(c => c.sport === l.sport && c.sessionId === l.sessionId && c.label === l.label);
   let type = player.battlePass || null;
-  let level = playerLevel(player.deviceId);
+  let level = playerLevel(player);
 
   const ov = openModal(`
     <div class="modal-body">
@@ -2639,7 +2674,7 @@ function openPlayersModal() {
             ${p.insta ? '@' + esc(p.insta) + ' · ' : ''}${esc(p.email || '')}${p.phone ? ' · ' + esc(p.phone) : ''}
           </small>
         </div>
-        ${levelChipHtml(p.deviceId)}
+        ${levelChipHtml(p)}
         ${p.noShows >= 2 ? `<span class="chip chip-flag">${esc(t('noShowChip', { n: p.noShows }))}</span>` : ''}
         ${p.flagged ? `<span class="chip chip-flag">${esc(t('flaggedRemovals', { n: p.flagged }))}</span>` : (p.removals ? `<span class="chip chip-muted">${esc(t('removalsCount', { n: p.removals }))}</span>` : '')}
         ${p.owes ? `<span class="chip chip-unpaid">${esc(t('owesAmount', { amount: fmtMoney(p.owes) }))}</span>`
@@ -2718,7 +2753,7 @@ function openFindModal(ev) {
                 ${su.email ? ' · ' + esc(su.email) : ''}${su.phone ? ' · ' + esc(su.phone) : ''}
               </small>
             </div>
-            ${levelChipHtml(su.deviceId)}
+            ${levelChipHtml(su)}
             ${su.viaPass ? `<span class="chip chip-pass-off">${esc(t('heldChip'))}</span>` : ''}
             <span class="chip ${paid ? 'chip-paid' : 'chip-unpaid'}">${esc(paid ? t('paidChip') : t('unpaidChip'))}</span>
             <span class="chip ${su.checkedIn ? 'chip-in-ok' : 'chip-muted'}">${esc(su.checkedIn ? t('inChip') : t('outChip'))}</span>
