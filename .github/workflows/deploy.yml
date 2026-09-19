@@ -35,7 +35,11 @@ jobs:
           V=${GITHUB_SHA::8}
           sed -i "s|src=\"js/app.js\"|src=\"js/app.js?v=$V\"|; s|href=\"css/styles.css\"|href=\"css/styles.css?v=$V\"|" public/index.html
           sed -i -E "s|(from '\./[a-zA-Z0-9_-]+\.js)'|\1?v=$V'|g" public/js/app.js
-          grep -n 'v=' public/index.html public/js/app.js | head
+          # A sed that matches nothing exits 0, so say what must be true.
+          grep -q "js/app.js?v=$V" public/index.html
+          grep -q "css/styles.css?v=$V" public/index.html
+          test "$(grep -c "\.js?v=$V'" public/js/app.js)" = 4
+          echo "stamped $V"
       - name: Upload the app
         uses: actions/upload-pages-artifact@v3
         with:
