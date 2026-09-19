@@ -26,6 +26,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Stamp this commit onto the scripts
+        # Pages lets a browser cache js/ and css/, and a phone holds them
+        # far longer than the header says. A fix nobody re-fetches is not a
+        # fix — the duplicate rosters came back twice that way — so every
+        # deploy gets its own URLs and nobody has to be told to hard-reload.
+        run: |
+          V=${GITHUB_SHA::8}
+          sed -i "s|src=\"js/app.js\"|src=\"js/app.js?v=$V\"|; s|href=\"css/styles.css\"|href=\"css/styles.css?v=$V\"|" public/index.html
+          sed -i -E "s|(from '\./[a-zA-Z0-9_-]+\.js)'|\1?v=$V'|g" public/js/app.js
+          grep -n 'v=' public/index.html public/js/app.js | head
       - name: Upload the app
         uses: actions/upload-pages-artifact@v3
         with:
