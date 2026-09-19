@@ -355,33 +355,79 @@ function findList(ev, want) {
  * `order: -1` puts them above the walk-up queue, so a held spot cannot be
  * pushed onto the waitlist by people signing up at midnight on Sunday.
  */
+/*
+ * Seat the season-pass holders.
+ *
+ * Three things made this multiply people instead of seating them, and all
+ * three have to hold for it to be safe:
+ *
+ *  - It ran on every render, without waiting for itself. Its own writes
+ *    caused the next render, which started another run against a roster
+ *    snapshot taken before the previous writes landed, so every pass holder
+ *    was added again on every pass. It runs once per event per page now, and
+ *    never twice at once.
+ *  - It recognised an existing seat by device id, so a pass holder with two
+ *    profiles never matched their own row and was seated afresh each time.
+ *    Identity, like everywhere else.
+ *  - It only checked the exact list, so a holder already playing something
+ *    else at 7:30 got a second 7:30 seat. One spot per slot applies to held
+ *    spots too.
+ *
+ * A pass is a standing reservation: the club took a season's money up front,
+ * so the spot is theirs whether or not they remember to sign up. They tell an
+ * exec when they cannot make it and the exec takes the name off, which is why
+ * this only ever ADDS a missing seat and never re-adds a removed one.
+ */
+let seating = false;
+const seatedEvents = new Set();
+
 async function seatPassHolders(ev) {
   if (!isExec() || !state.settings.passAutoSeat) return;
   if (ev.status !== 'open' || isPastEvent(ev)) return;
-  const existing = eventSignups(ev.id);
-  const removed = new Set((state.removals || [])
-    .filter(r => r.eventId === ev.id)
-    .map(r => (r.deviceId || '') + '|' + r.listId));
-  const adds = [];
-  for (const player of Object.values(state.players || {})) {
-    if (!player.battlePass) continue;
-    for (const want of passLists(player)) {
-      const list = findList(ev, want);
-      if (!list) continue;
-      if (existing.some(su => su.deviceId === player.deviceId && su.listId === list.id)) continue;
-      if (removed.has(player.deviceId + '|' + list.id)) continue;   // taken off on purpose
-      adds.push({
-        id: uid('su'), listId: list.id, name: player.name,
-        email: player.email || '', phone: player.phone || '', insta: player.insta || '',
-        photo: player.photo || '', method: 'etransfer', deviceId: player.deviceId,
-        paid: false, checkedIn: false, lang: player.lang || 'en',
-        viaPass: true, order: -1, createdAt: Date.now(),
-      });
+  if (seating || seatedEvents.has(ev.id)) return;
+  seating = true;
+  seatedEvents.add(ev.id);
+  try {
+    const removed = new Set((state.removals || [])
+      .filter(r => r.eventId === ev.id)
+      .map(r => identityOf(r) + '|' + r.listId));
+    // One record per human: a duplicate profile must not earn a second seat.
+    const holders = {};
+    for (const player of Object.values(state.players || {})) {
+      if (!player.battlePass || !passLists(player).length) continue;
+      const id = identityOf(player);
+      if (!holders[id] || passLists(holders[id]).length < passLists(player).length) holders[id] = player;
     }
-  }
-  if (adds.length) {
-    await store.addSignups(ev.id, adds);
-    toast(t('passSeated', { n: adds.length }));
+    const adds = [];
+    // Slots claimed so far, counting the ones this run is about to add.
+    const claimed = {};
+    for (const [id, player] of Object.entries(holders)) {
+      for (const want of passLists(player)) {
+        const list = findList(ev, want);
+        if (!list) continue;
+        const key = id + '|' + list.sessionId;
+        if (claimed[key]) continue;
+        if (identitiesInSession(ev, list.sessionId).has(id)) continue;  // already playing then
+        if (removed.has(id + '|' + list.id)) continue;                  // taken off on purpose
+        claimed[key] = true;
+        adds.push({
+          id: uid('su'), listId: list.id, name: player.name,
+          email: player.email || '', phone: player.phone || '', insta: player.insta || '',
+          photo: player.photo || '', method: 'etransfer', deviceId: player.deviceId,
+          paid: false, checkedIn: false, lang: player.lang || 'en',
+          viaPass: true, order: -1, createdAt: Date.now(),
+        });
+      }
+    }
+    if (adds.length) {
+      await store.addSignups(ev.id, adds);
+      toast(t('passSeated', { n: adds.length }));
+    }
+  } catch (err) {
+    console.error('seat pass holders', err);
+    seatedEvents.delete(ev.id);      // let a later render try again
+  } finally {
+    seating = false;
   }
 }
 
