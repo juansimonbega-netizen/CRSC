@@ -324,8 +324,22 @@ function createDemoStore() {
     },
     async addSignups(eventId, signups) {
       if (!state.signups[eventId]) state.signups[eventId] = [];
-      state.signups[eventId].push(...signups);
+      const rows = state.signups[eventId];
+      // Upsert by id, the same as setDoc() on the real backends. An id that
+      // is already there is the same row written twice, not a second person.
+      for (const su of signups) {
+        const i = rows.findIndex(x => x.id === su.id);
+        if (i >= 0) rows[i] = { ...rows[i], ...su }; else rows.push(su);
+      }
       persist();
+    },
+    async seatSignups(eventId, signups) {
+      if (!state.signups[eventId]) state.signups[eventId] = [];
+      const have = new Set(state.signups[eventId].map(x => x.id));
+      const fresh = signups.filter(su => !have.has(su.id));
+      state.signups[eventId].push(...fresh);
+      persist();
+      return fresh.length;
     },
     async updateSignup(eventId, signupId, patch) {
       const list = state.signups[eventId] || [];
@@ -428,6 +442,19 @@ async function createFirebaseStore(config) {
         const { id, ...data } = s;
         return fs.setDoc(fs.doc(db, 'events', eventId, 'signups', id), data);
       }));
+    },
+    /* Write only the rows that are not there yet, and never overwrite one
+     * that is: an auto-seated spot may already have been marked paid. */
+    async seatSignups(eventId, signups) {
+      let n = 0;
+      await Promise.all(signups.map(async s => {
+        const { id, ...data } = s;
+        const ref = fs.doc(db, 'events', eventId, 'signups', id);
+        if ((await fs.getDoc(ref)).exists()) return;
+        await fs.setDoc(ref, data);
+        n++;
+      }));
+      return n;
     },
     async updateSignup(eventId, signupId, patch) {
       await fs.setDoc(fs.doc(db, 'events', eventId, 'signups', signupId), patch, { merge: true });
@@ -578,6 +605,19 @@ async function createArtifactDbStore() {
         const { id, ...data } = su;
         return db.doc('events/' + eventId + '/signups/' + id).set(data);
       }));
+    },
+    /* Write only the rows that are not there yet, and never overwrite one
+     * that is: an auto-seated spot may already have been marked paid. */
+    async seatSignups(eventId, signups) {
+      let n = 0;
+      await Promise.all(signups.map(async su => {
+        const { id, ...data } = su;
+        const ref = db.doc('events/' + eventId + '/signups/' + id);
+        if ((await ref.get()).exists) return;
+        await ref.set(data);
+        n++;
+      }));
+      return n;
     },
     async updateSignup(eventId, signupId, patch) {
       await mergeWrite(db.doc('events/' + eventId + '/signups/' + signupId), patch);

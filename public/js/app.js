@@ -338,6 +338,30 @@ function passLists(player) {
   return Array.isArray(player?.passLists) ? player.passLists : [];
 }
 
+/*
+ * The document id of a pass holder's standing seat.
+ *
+ * Deterministic on purpose. A held spot is "this person, this time slot" —
+ * one fact, so it gets one row, and writing it again lands on the same row
+ * instead of making a new one. That is what finally stopped the multiplying:
+ * the guards below decide when NOT to write, and this decides that a write
+ * that slips through anyway cannot become a duplicate.
+ */
+function fnv1a(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function passSeatId(identity, listId) {
+  // Slugged for readability, hashed so two identities can never share an id.
+  const slug = identity.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+  return 'seat-' + listId + '-' + slug + '-' + fnv1a(identity);
+}
+
 function findList(ev, want) {
   return (ev.lists || []).find(l =>
     l.sport === want.sport && l.sessionId === want.sessionId && l.label === want.label);
@@ -385,6 +409,13 @@ async function seatPassHolders(ev) {
   if (!isExec() || !state.settings.passAutoSeat) return;
   if (ev.status !== 'open' || isPastEvent(ev)) return;
   if (seating || seatedEvents.has(ev.id)) return;
+  // The roster has to be HERE before we can tell who is already seated.
+  // renderEvent starts watching the event and calls this in the same breath,
+  // so on the first render the snapshot has not arrived and every sign-up is
+  // invisible — which is how a page load kept seating everybody afresh. Do
+  // nothing and stay unmarked: the render that follows the snapshot calls
+  // again, and that one can see.
+  if (!signupsLoaded(ev.id)) return;
   seating = true;
   seatedEvents.add(ev.id);
   try {
@@ -411,7 +442,7 @@ async function seatPassHolders(ev) {
         if (removed.has(id + '|' + list.id)) continue;                  // taken off on purpose
         claimed[key] = true;
         adds.push({
-          id: uid('su'), listId: list.id, name: player.name,
+          id: passSeatId(id, list.id), listId: list.id, name: player.name,
           email: player.email || '', phone: player.phone || '', insta: player.insta || '',
           photo: player.photo || '', method: 'etransfer', deviceId: player.deviceId,
           paid: false, checkedIn: false, lang: player.lang || 'en',
@@ -420,8 +451,10 @@ async function seatPassHolders(ev) {
       }
     }
     if (adds.length) {
-      await store.addSignups(ev.id, adds);
-      toast(t('passSeated', { n: adds.length }));
+      // seatSignups skips ids that already exist, so a seat an exec has
+      // since marked paid is never rewritten back to unpaid.
+      const n = await store.seatSignups(ev.id, adds);
+      if (n) toast(t('passSeated', { n }));
     }
   } catch (err) {
     console.error('seat pass holders', err);
