@@ -154,6 +154,18 @@ const STRINGS = {
   // Reaching the club. Instagram is where this club actually answers.
   // Signing in. The address is proven, which is what lets the exec list and
   // one-account-per-person mean anything.
+  signInBtn: ['Sign in', 'Connexion'],
+  signInLater: ['Not now', 'Plus tard'],
+  execOff: ['Exit exec', 'Quitter exec'],
+  execPinHint: ['The old way in, still here until sign-in is required. It stops working then.',
+                'L\u2019ancienne m\u00e9thode, encore l\u00e0 jusqu\u2019\u00e0 ce que la connexion soit obligatoire. Elle cessera alors de fonctionner.'],
+  requireSignInLbl: ['Sign-in', 'Connexion'],
+  requireSignInOpt: ['Require everyone to sign in', 'Exiger que tout le monde se connecte'],
+  requireSignInHint: ['Leave this off until the whole exec team and the regulars have signed in at least once. Turning it on shuts the door on anybody who has not \u2014 and retires the PIN.',
+                      'Laissez d\u00e9sactiv\u00e9 jusqu\u2019\u00e0 ce que toute l\u2019\u00e9quipe et les habitu\u00e9s se soient connect\u00e9s au moins une fois. L\u2019activer ferme la porte \u00e0 ceux qui ne l\u2019ont pas fait \u2014 et retire le NIP.'],
+  requireSignInAsk: ['Require sign-in from now on? Anyone who has not signed in yet \u2014 including an exec at the gym \u2014 will not get into the app until they do, and the PIN stops working.',
+                     'Exiger la connexion d\u00e9sormais? Quiconque ne s\u2019est pas connect\u00e9 \u2014 y compris un exec au gymnase \u2014 n\u2019aura pas acc\u00e8s \u00e0 l\u2019application, et le NIP cessera de fonctionner.'],
+  requireSignInGo: ['Require it', 'Exiger'],
   signInWhy: ['Sign in once so the club knows your spot is yours \u2014 and stays yours on any phone. No password.',
               'Connectez-vous une fois pour que le club sache que votre place est la v\u00f4tre \u2014 sur n\u2019importe quel t\u00e9l\u00e9phone. Aucun mot de passe.'],
   signInGoogle: ['Continue with Google', 'Continuer avec Google'],

@@ -17,7 +17,7 @@ const d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7));
 const DATE = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const fixture = {
-  settings: { execEmails: ['juansimonbega@gmail.com', 'essma.snechi@gmail.com'] },
+  settings: { execEmails: ['juansimonbega@gmail.com', 'essma.snechi@gmail.com'], requireSignIn: true },
   removals: [], payments: [], log: [], players: {},
   events: [{ id: 'ev', title: 'S', date: DATE, status: 'open', location: 'X',
     sessions: [{ id: 's1', label: '5:30 - 7:30 PM' }],
@@ -43,16 +43,17 @@ export async function sendEmailLink(email) { window.__linkSentTo = email; }
 export async function signOutNow() { window.__setUser(null); }
 `;
 
-async function open(who) {
+async function open(who, settings) {
   const pg = await ctx.newPage();
   pg.on('pageerror', e => errs.push(e.message));
   await pg.route('**/firebase-config.js', r => r.fulfill({ contentType: 'application/javascript', body: 'window.FIREBASE_CONFIG=null;window.MAILER=null;' }));
   await pg.route('**/js/auth.js', r => r.fulfill({ contentType: 'application/javascript', body: authStub }));
-  await pg.addInitScript(({ KEY, fixture, who }) => {
-    if (!localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(fixture));
+  await pg.addInitScript(({ KEY, fixture, who, settings }) => {
+    const f = settings ? { ...fixture, settings: { ...fixture.settings, ...settings } } : fixture;
+    localStorage.setItem(KEY, JSON.stringify(f));
     window.__WHO = who;
     if (who) localStorage.setItem('crsc-profile', JSON.stringify({ name: who.name, email: who.email, deviceId: 'd-' + who.email }));
-  }, { KEY, fixture, who });
+  }, { KEY, fixture, who, settings: settings || null });
   await pg.goto('http://localhost:8099/#/', { waitUntil: 'networkidle' });
   await pg.waitForTimeout(1300);
   return pg;
@@ -105,8 +106,23 @@ const guards = await exec.evaluate(() => ({
 console.log('exec list        :', JSON.stringify(guards.rows));
 console.log('can remove self  :', guards.canDropSelf, '(must be false)');
 
+// 4. The lockout that must not be possible.
+//
+// Sign-in shipped before the club had turned it on, and before Firebase had
+// its sign-in methods enabled. If the door went up on its own, every member
+// AND every exec would be standing outside an app nobody could open. Until
+// the club sets requireSignIn, being signed out has to change nothing.
+const notYet = await open(null, { requireSignIn: false });
+const stillWorks = await notYet.evaluate(() => ({
+  door: !!document.querySelector('#si-google'),
+  calendar: !!document.querySelector('.cal-grid, .calendar, .cal-month'),
+  offered: !!document.querySelector('#btn-signin'),
+}));
+console.log('door not turned on:', JSON.stringify(stillWorks), '(door must be false, calendar true)');
+
 console.log('errors:', errs.length ? errs : 'none');
-const ok = door.signIn && !door.calendar && !door.execTools && linkTo === 'someone@hotmail.com'
+const ok = !stillWorks.door && stillWorks.calendar && stillWorks.offered
+        && door.signIn && !door.calendar && !door.execTools && linkTo === 'someone@hotmail.com'
         && !asMember.execTools && !asMember.execsBtn && !asMember.tag
         && asExec.execTools && asExec.execsBtn && asExec.tag
         && guards.rows.length === 2 && guards.canDropSelf === false

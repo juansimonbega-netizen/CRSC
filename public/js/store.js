@@ -31,6 +31,10 @@ export const DEFAULT_SETTINGS = {
   instagram: 'crsc_concordia',
   location: 'Collège de Maisonneuve, 2701 rue Nicolet, H1X 1Z8, 3rd floor',
   execPin: '1405',
+  // The sign-in door is offered before it is compulsory. An exec turns this
+  // on once the team and the regulars all have accounts; until then the app
+  // works exactly as it did, so nobody is locked out mid-season.
+  requireSignIn: false,
   seasonEnd: '2026-12-26',
   lateFeeNote: '+5$ late fee if payment is made after the event',
   lateFeeAmount: 5,
