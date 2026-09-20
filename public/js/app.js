@@ -328,8 +328,28 @@ function playerRecord(who) {
   return playerByIdentity(who);
 }
 
-function playerPass(who) {
-  return playerRecord(who)?.battlePass || null;
+/*
+ * Somebody's season pass, as it stands on a given Saturday.
+ *
+ * A pass buys a season, not a lifetime. Without the date a fall pass kept
+ * holding seats into the winter and kept paying for the winter's volleyball,
+ * so every question that depends on a particular night — is this spot held,
+ * is it covered, what does this person owe — asks with that night's date.
+ * Editing the pass itself asks without one, because an exec looking at a
+ * player's record wants to see the pass that is there, expired or not.
+ */
+function playerPass(who, onDate = null) {
+  const rec = playerRecord(who);
+  if (!rec?.battlePass) return null;
+  if (onDate && rec.passUntil && onDate > rec.passUntil) return null;
+  return rec.battlePass;
+}
+
+/* Has this pass run out, as of today? Shown to execs so a renewal is
+ * something they can see coming rather than discover. */
+function passExpired(who) {
+  const rec = playerRecord(who);
+  return !!(rec?.battlePass && rec.passUntil && todayStr() > rec.passUntil);
 }
 
 /*
@@ -481,6 +501,8 @@ async function seatPassHolders(ev) {
     // Slots claimed so far, counting the ones this run is about to add.
     const claimed = {};
     for (const [id, player] of Object.entries(holders)) {
+      // A pass that has run out stops holding spots on the next Saturday.
+      if (player.passUntil && ev.date > player.passUntil) continue;
       for (const want of passLists(player)) {
         const list = findList(ev, want);
         if (!list) continue;
@@ -501,8 +523,13 @@ async function seatPassHolders(ev) {
     if (adds.length) {
       // seatSignups skips ids that already exist, so a seat an exec has
       // since marked paid is never rewritten back to unpaid.
-      const n = await store.seatSignups(ev.id, adds);
-      if (n) toast(t('passSeated', { n }));
+      const fresh = await store.seatSignups(ev.id, adds);
+      if (fresh.length) {
+        toast(t('passSeated', { n: fresh.length }));
+        // Tell the holders their spot is waiting, while there is still time
+        // for them to say they cannot make it.
+        notifySeatHeld(ev, fresh).catch(err => console.error('seat email', err));
+      }
     }
   } catch (err) {
     console.error('seat pass holders', err);
@@ -572,7 +599,7 @@ function coveredSignupIds(ev) {
   const byPerson = {};
   for (const su of eventSignups(ev.id)) (byPerson[personKey(su)] = byPerson[personKey(su)] || []).push(su);
   for (const sus of Object.values(byPerson)) {
-    const pass = playerPass(sus[0]);
+    const pass = playerPass(sus[0], ev.date);
     if (!pass) continue;
     const volley = sus
       .filter(s => listById(ev, s.listId)?.sport === 'volleyball')
@@ -644,7 +671,7 @@ function personTotals(ev) {
     persons[k].signups.push(su);
   }
   return Object.values(persons).map(p => {
-    const pass = playerPass(p.signups?.[0] || p);
+    const pass = playerPass(p.signups?.[0] || p, ev.date);
     // Money is owed per spot, so split the person's spots into what is
     // settled (paid, or covered by their pass) and what is still owed.
     // Someone who paid for volleyball but also signed up for basketball
@@ -694,7 +721,7 @@ function payLineFor(lang, method, total) {
 
 async function sendConfirmationEmail(ev, profile, listIds, method) {
   const lang = getLang();
-  const myPass = playerPass(DEVICE);
+  const myPass = playerPass(DEVICE, ev.date);
   const allMine = [...new Set([...mySignups(ev.id).map(m => m.listId), ...listIds])];
   const { total } = computePrice(ev, allMine, method, myPass);
   const lists = allMine.map(id => {
@@ -782,6 +809,48 @@ async function notifyPaymentReceived(ev, people, pay = null) {
 
 /* A season pass is real money and a standing commitment — it gets its own
  * receipt explaining what the player just bought. */
+/*
+ * "Your spot for Saturday is held."
+ *
+ * A pass holder never signs up, so without this the first they hear of a
+ * Saturday is the Saturday. One email the moment their seat is put down
+ * gives them the week to tell an exec they cannot make it — which is the
+ * whole point: a held spot nobody frees is a place the waitlist could have
+ * had, and it is the most repetitive message in the exec chat.
+ */
+async function notifySeatHeld(ev, seats) {
+  if (store.mode === 'demo' || !mailerConfigured()) return;
+  const byPerson = {};
+  for (const su of seats) {
+    if (!su.email) continue;
+    (byPerson[identityOf(su)] = byPerson[identityOf(su)] || []).push(su);
+  }
+  for (const rows of Object.values(byPerson)) {
+    const su = rows[0];
+    const lang = su.lang === 'fr' ? 'fr' : 'en';
+    const where = rows.map(r => {
+      const l = listById(ev, r.listId);
+      const sess = l ? sessionById(ev, l.sessionId) : null;
+      return '\u2022 ' + (SPORTS[l?.sport]?.label || '') + ' ' + (l?.label || '')
+           + (sess ? ' \u2014 ' + sess.label : '');
+    }).join('\n');
+    try {
+      await sendMail({
+        to: su.email,
+        subject: tLang(lang, 'emailHeldSubject', { date: fmtDateLang(ev.date, lang) }),
+        message: tLang(lang, 'emailHeldBody', {
+          name: su.name,
+          date: fmtDateLang(ev.date, lang),
+          where,
+          location: ev.location || state.settings.location || '',
+          insta: state.settings.instagram || '',
+          club: state.settings.clubFullName || 'CRSC',
+        }),
+      });
+    } catch (err) { console.error('seat held email', err); }
+  }
+}
+
 async function notifyPassActivated(player, type, amount) {
   if (store.mode === 'demo' || !mailerConfigured() || !player.email) return;
   const lang = player.lang === 'fr' ? 'fr' : 'en';
@@ -826,7 +895,7 @@ async function runPaymentReminders() {
       for (const sus of Object.values(persons)) {
         const su = sus[0];
         const lang = su.lang === 'fr' ? 'fr' : 'en';
-        const { total } = computePrice(ev, sus.map(x => x.listId), su.method, playerPass(su));
+        const { total } = computePrice(ev, sus.map(x => x.listId), su.method, playerPass(su, ev.date));
         if (total === 0) continue;
         if (live) {
           // claim before sending so a second open tab can't double-send
@@ -898,7 +967,7 @@ async function notifyPromotion(ev, promo) {
       return;
     }
     const lang = cand.lang === 'fr' ? 'fr' : 'en';
-    const pass = playerPass(cand);
+    const pass = playerPass(cand, ev.date);
     const { total } = computePrice(ev, [list.id], cand.method, pass);
     await sendMail({
       to: cand.email,
@@ -932,7 +1001,7 @@ async function logRemoval(ev, su, by) {
   const l = listById(ev, su.listId);
   const sess = l ? sessionById(ev, l.sessionId) : null;
   const covered = coveredSignupIds(ev).has(su.id);
-  const { total } = covered ? { total: 0 } : computePrice(ev, [su.listId], su.method, playerPass(su));
+  const { total } = covered ? { total: 0 } : computePrice(ev, [su.listId], su.method, playerPass(su, ev.date));
   const now = Date.now();
   const started = ev.date ? now >= new Date(ev.date + 'T17:00:00').getTime() : false;
   try {
@@ -1504,8 +1573,8 @@ function paymentChip(s, covered = false, short = false, settle = null) {
  * outlined when the person holds a pass that does NOT cover this spot (a 2h
  * pass on their second slot, or another sport) so nobody gets asked twice.
  */
-function statusChips(s, covered, exec, settle = null) {
-  const pass = playerPass(s);
+function statusChips(ev, s, covered, exec, settle = null) {
+  const pass = playerPass(s, ev.date);
   const here = exec && s.checkedIn
     ? `<span class="chip ${s.paid || covered ? 'chip-in-ok' : 'chip-in-warn'}">${esc(t('here'))}</span>`
     : '';
@@ -1531,7 +1600,7 @@ function entryRow(ev, s, { waitlistPos = null, exec = false, covered = false } =
       </div>
       ${waitlistPos !== null ? `<span class="chip chip-wl">${esc(t('wlShort', { n: waitlistPos }))}</span>` : ''}
       ${exec ? levelChipHtml(s) : ''}
-      ${exec || mine ? statusChips(s, covered, exec, personSettlement(ev, s)) : ''}
+      ${exec || mine ? statusChips(ev, s, covered, exec, personSettlement(ev, s)) : ''}
       ${mine && !exec && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cancel="${esc(s.id)}" title="${esc(t('remove'))}">✕</button>` : ''}
     </div>`;
 }
@@ -1683,9 +1752,10 @@ function renderEvent(ev) {
             const l = listById(ev, m.listId);
             const sess = l ? sessionById(ev, l.sessionId) : null;
             return `<span class="chip chip-mine">${esc(SPORTS[l?.sport]?.label || '')} ${esc(l ? l.label : '?')}${sess ? ' · ' + esc(sess.label) : ''}</span>${
-              isOpen ? `<button class="btn btn-tiny btn-ghost" data-switch="${esc(m.id)}">${esc(t('switchSpot'))}</button>` : ''}`;
+              isOpen ? `<button class="btn btn-tiny btn-ghost" data-switch="${esc(m.id)}">${esc(t('switchSpot'))}</button>` : ''}${
+              isOpen && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cantmake="${esc(m.id)}">${esc(t('cantMakeIt'))}</button>` : ''}`;
           }).join('')}
-          ${mine.some(m => !m.paid && !coveredSet.has(m.id)) ? `<button class="btn btn-small btn-warn" id="btn-how-pay">${esc(t('howToPay'))}</button>` : (mine.every(m => coveredSet.has(m.id)) ? passChipHtml(playerPass(DEVICE)) : `<span class="chip chip-paid">${esc(t('allPaid'))}</span>`)}
+          ${mine.some(m => !m.paid && !coveredSet.has(m.id)) ? `<button class="btn btn-small btn-warn" id="btn-how-pay">${esc(t('howToPay'))}</button>` : (mine.every(m => coveredSet.has(m.id)) ? passChipHtml(playerPass(DEVICE, ev.date)) : `<span class="chip chip-paid">${esc(t('allPaid'))}</span>`)}
           ${ev.date === todayStr() && isOpen ? (mine.every(m => m.checkedIn)
             ? `<span class="chip chip-in-ok">${esc(t('selfCheckedIn'))}</span><button class="btn btn-tiny btn-ghost" id="btn-self-out">${esc(t('undo'))}</button>`
             : `<button class="btn btn-small btn-success" id="btn-self-in">${esc(t('imHere'))}</button>`) : ''}
@@ -1718,6 +1788,18 @@ function renderEvent(ev) {
       await removeSignup(ev, su, 'self');
       toast(t('removedSelf'));
     }
+  }));
+  $$('[data-cantmake]').forEach(b => b.addEventListener('click', async () => {
+    const su = mySignups(ev.id).find(x => x.id === b.dataset.cantmake);
+    if (!su) return;
+    const l = listById(ev, su.listId);
+    const held = !!su.viaPass;
+    const ask = held ? t('cantMakeHeldConfirm', { list: l?.label || '' })
+                     : t('cantMakeConfirm', { list: l?.label || '' });
+    if (!await confirmModal(ask, t('cantMakeIt'))) return;
+    b.disabled = true;
+    await removeSignup(ev, su, 'self');
+    toast(held ? t('cantMakeHeldDone') : t('removedSelf'));
   }));
   $$('[data-switch]').forEach(b => b.addEventListener('click', () => {
     const su = mySignups(ev.id).find(x => x.id === b.dataset.switch);
@@ -2081,7 +2163,7 @@ function openJoinSheet(ev, preselectedListId) {
 
   function refreshPrice() {
     const method = $('input[name="paym"]:checked', ov).value;
-    const myPass = playerPass(DEVICE);
+    const myPass = playerPass(DEVICE, ev.date);
     const chosen = $$('input[data-list]:checked', ov).map(c => c.dataset.list);
     const already = [...myIds];
     const { total: totalAll } = computePrice(ev, [...chosen, ...already], method, myPass);
@@ -2174,8 +2256,8 @@ function openPayInfoModal(ev, method) {
   const mine = mySignups(ev.id).filter(m => !m.paid);
   const m = method || (mine[0]?.method) || 'etransfer';
   const ids = mySignups(ev.id).map(x => x.listId);
-  const { total } = computePrice(ev, ids, m, playerPass(DEVICE));
-  if (total === 0 && playerPass(DEVICE)) {
+  const { total } = computePrice(ev, ids, m, playerPass(DEVICE, ev.date));
+  if (total === 0 && playerPass(DEVICE, ev.date)) {
     openModal(`
       <div class="modal-body">
         <h2>${esc(t('howToPay'))}</h2>
@@ -2708,13 +2790,16 @@ async function setPlayerLevel(player, rank) {
 }
 
 /* Set/clear a player's Battle Pass (execs only; volleyball season pass). */
-async function setBattlePass(player, type, lists = null) {
+async function setBattlePass(player, type, lists = null, until = undefined) {
   await store.savePlayer({
     deviceId: player.deviceId,
     name: player.name,
     battlePass: type || null,
     // Clearing the pass clears the standing reservation with it.
     passLists: type ? (lists || passLists(player)) : [],
+    // The season it was bought for. A pass with no end date holds spots
+    // for ever, which is how a fall pass kept seating people in May.
+    ...(until === undefined ? {} : { passUntil: type ? (until || null) : null }),
   });
   toast(type ? t('battlePassSet', { name: player.name, type: type.toUpperCase() }) : t('battlePassRemoved', { name: player.name }));
 }
@@ -2733,6 +2818,7 @@ function openPassModal(player, onDone) {
   const has = (l) => chosen.some(c => c.sport === l.sport && c.sessionId === l.sessionId && c.label === l.label);
   let type = player.battlePass || null;
   let level = playerLevel(player);
+  const rec = playerRecord(player) || {};
 
   const ov = openModal(`
     <div class="modal-body">
@@ -2751,6 +2837,9 @@ function openPassModal(player, onDone) {
         <button class="btn btn-small grow" data-type="4h">4H · ${fmtMoney(state.settings.passPrice4h)}</button>
       </div>
       <div id="pm-seats">
+        <label class="field-label">${esc(t('passUntilLbl'))}</label>
+        <input class="input" id="pm-until" type="date" value="${esc(rec.passUntil || state.settings.seasonEnd || '')}">
+        <p class="hint">${esc(t('passUntilHint'))}</p>
         <label class="field-label">${esc(t('heldSpotLbl'))}</label>
         <div class="pass-lists">
           ${(ev?.sessions || []).map(sess => `
@@ -2797,7 +2886,7 @@ function openPassModal(player, onDone) {
         if (l) lists.push({ sport: l.sport, sessionId: l.sessionId, label: l.label });
       }
     }
-    await setBattlePass(player, type, lists);
+    await setBattlePass(player, type, lists, $('#pm-until', ov)?.value || '');
     await setPlayerLevel(player, level);
     ov.remove();
     if (onDone) onDone(type, level);
@@ -3087,7 +3176,8 @@ async function runAutoMatch() {
       const who = nameHits((pay.sender || '') + ' ' + (pay.message || ''), allPlayers());
       const top = who.length === 1 ? who[0].person : null;
       if (top && !top.deviceId.startsWith('name:')) {
-        await setBattlePass(top, pass, passLists(state.players[top.deviceId]));
+        await setBattlePass(top, pass, passLists(state.players[top.deviceId]),
+                            state.settings.seasonEnd || '');
         await store.updatePayment(pay.id, {
           matched: true, matchedTo: top.name, auto: true,
           matchedAt: Date.now(), kind: 'pass',

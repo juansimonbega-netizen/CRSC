@@ -120,6 +120,16 @@ const STRINGS = {
   execDupWarn: ['{name} is already on a list in this time slot. Add them again anyway?', '{name} est déjà sur une liste à cette heure. L\u2019ajouter quand même?'],
   addAnyway: ['Add anyway', 'Ajouter quand même'],
   alreadyOnList: ['You are already signed up for that time slot.', 'Vous êtes déjà inscrit à cette plage horaire.'],
+  cantMakeIt: ['Can\u2019t make it', 'Je ne peux pas venir'],
+  cantMakeConfirm: ['Take your name off {list}? The spot goes to whoever is next on the waitlist.',
+                    'Retirer votre nom de {list}? La place ira \u00e0 la personne suivante sur la liste d\u2019attente.'],
+  cantMakeHeldConfirm: ['Give up your held spot on {list} for this Saturday? You keep your season pass and it will be held again next week.',
+                        'Lib\u00e9rer votre place r\u00e9serv\u00e9e sur {list} pour ce samedi? Vous gardez votre passe de saison et la place sera r\u00e9serv\u00e9e de nouveau la semaine prochaine.'],
+  cantMakeHeldDone: ['Thanks for telling us \u2014 somebody else can play. Your pass is untouched.',
+                     'Merci de nous avoir pr\u00e9venus \u2014 quelqu\u2019un d\u2019autre pourra jouer. Votre passe reste intacte.'],
+  passUntilLbl: ['Pass valid until', 'Passe valide jusqu\u2019au'],
+  passUntilHint: ['The last Saturday this pass holds a spot and covers volleyball. Leave it on the season end unless they paid for something shorter.',
+                  'Le dernier samedi o\u00f9 cette passe r\u00e9serve une place et couvre le volleyball. Laissez la fin de saison, sauf s\u2019ils ont pay\u00e9 pour plus court.'],
   onePerSlot: ['One list per time slot — you cannot play two at once.', 'Une seule liste par plage horaire — impossible de jouer aux deux.'],
   switchGone: ['That list is no longer on this Saturday.', 'Cette liste n\u2019existe plus pour ce samedi.'],
 
@@ -365,6 +375,13 @@ const STRINGS = {
   emailRemBody: [
     'Hey {name}!\n\nYour game is coming up ({date}) and our list shows {total} still unpaid.\n\n{payLine}\n{late}\n\nAlready paid? Then ignore this — an exec will confirm it shortly.\n\nWhen you arrive at the gym, open the sign-up page and tap "I\'m here" to check in.\n\n— {club}',
     'Salut {name}!\n\nVotre partie approche ({date}) et notre liste indique {total} non payé.\n\n{payLine}\n{late}\n\nDéjà payé? Ignorez ce message — un exec le confirmera sous peu.\n\nEn arrivant au gymnase, ouvrez la page d\'inscription et touchez « Je suis là » pour confirmer votre présence.\n\n— {club}',
+  ],
+  // A pass holder never signs up, so this is the only warning they get that
+  // Saturday is coming — and the week they need to say they cannot make it.
+  emailHeldSubject: ['CRSC \u2014 Your spot is held for {date}', 'CRSC \u2014 Votre place est r\u00e9serv\u00e9e pour le {date}'],
+  emailHeldBody: [
+    'Hey {name}!\n\nSign-ups for {date} are open, and your season pass has already saved your spot:\n{where}\n\nWhere: {location}\n\nNothing to pay and nothing to do \u2014 just turn up.\n\nCan\'t make it? Open the sign-up page and tap "Can\'t make it" on your spot, or message us @{insta}. Telling us early lets somebody on the waitlist play.\n\n\u2014 {club}',
+    'Salut {name}!\n\nLes inscriptions pour le {date} sont ouvertes, et votre passe de saison vous a d\u00e9j\u00e0 gard\u00e9 votre place\u00a0:\n{where}\n\nO\u00f9\u00a0: {location}\n\nRien \u00e0 payer et rien \u00e0 faire \u2014 venez, c\'est tout.\n\nVous ne pouvez pas venir? Ouvrez la page d\'inscription et touchez \u00ab\u00a0Je ne peux pas venir\u00a0\u00bb sur votre place, ou \u00e9crivez-nous @{insta}. Nous pr\u00e9venir t\u00f4t permet \u00e0 quelqu\'un de la liste d\'attente de jouer.\n\n\u2014 {club}',
   ],
   emailPromoSubject: ['CRSC — A spot opened up: you\'re in for {date}!', 'CRSC — Une place s\'est libérée : vous jouez le {date}!'],
   emailPromoBody: [

@@ -341,7 +341,7 @@ function createDemoStore() {
       const fresh = signups.filter(su => !have.has(su.id));
       state.signups[eventId].push(...fresh);
       persist();
-      return fresh.length;
+      return fresh;
     },
     async updateSignup(eventId, signupId, patch) {
       const list = state.signups[eventId] || [];
@@ -452,15 +452,15 @@ async function createFirebaseStore(config) {
     /* Write only the rows that are not there yet, and never overwrite one
      * that is: an auto-seated spot may already have been marked paid. */
     async seatSignups(eventId, signups) {
-      let n = 0;
+      const fresh = [];
       await Promise.all(signups.map(async s => {
         const { id, ...data } = s;
         const ref = fs.doc(db, 'events', eventId, 'signups', id);
         if ((await fs.getDoc(ref)).exists()) return;
         await fs.setDoc(ref, data);
-        n++;
+        fresh.push(s);
       }));
-      return n;
+      return fresh;
     },
     async updateSignup(eventId, signupId, patch) {
       await fs.setDoc(fs.doc(db, 'events', eventId, 'signups', signupId), patch, { merge: true });
@@ -618,15 +618,15 @@ async function createArtifactDbStore() {
     /* Write only the rows that are not there yet, and never overwrite one
      * that is: an auto-seated spot may already have been marked paid. */
     async seatSignups(eventId, signups) {
-      let n = 0;
+      const fresh = [];
       await Promise.all(signups.map(async su => {
         const { id, ...data } = su;
         const ref = db.doc('events/' + eventId + '/signups/' + id);
         if ((await ref.get()).exists) return;
         await ref.set(data);
-        n++;
+        fresh.push(su);
       }));
-      return n;
+      return fresh;
     },
     async updateSignup(eventId, signupId, patch) {
       await mergeWrite(db.doc('events/' + eventId + '/signups/' + signupId), patch);
