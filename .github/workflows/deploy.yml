@@ -39,6 +39,10 @@ jobs:
           grep -q "js/app.js?v=$V" public/index.html
           grep -q "css/styles.css?v=$V" public/index.html
           test "$(grep -c "\.js?v=$V'" public/js/app.js)" = 4
+          # The same id, published beside the app. A tab left open compares
+          # the two and reloads itself when they stop matching — without it
+          # a phone keeps running last week's code for as long as it likes.
+          printf '{"v":"%s"}\n' "$V" > public/version.json
           echo "stamped $V"
       - name: Upload the app
         uses: actions/upload-pages-artifact@v3

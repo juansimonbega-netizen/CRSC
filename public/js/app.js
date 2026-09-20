@@ -9,6 +9,54 @@ import { resolvePayment, nameHits, passPurchase, isTestTransfer, normalize } fro
 /* Small utilities                                                     */
 /* ================================================================== */
 
+/* ================================================================== */
+/* Staying up to date                                                  */
+/* ================================================================== */
+
+/*
+ * A tab left open keeps running the code it was loaded with, for days.
+ *
+ * That is not a theory: the sign-up duplicates were fixed, deployed and
+ * proven, and two days later a pass holder was seated twice anyway — by an
+ * exec's phone still running the version from before the fix. Giving each
+ * deploy its own script URLs stopped a RELOAD picking up stale code; it
+ * cannot do anything about a page that never reloads.
+ *
+ * So the page checks, and reloads itself when the club has shipped
+ * something newer. The build id is the one the deploy stamped onto this
+ * script's own URL, compared against the one it wrote beside the app.
+ */
+const BUILD = (() => {
+  try { return new URL(import.meta.url).searchParams.get('v') || 'dev'; }
+  catch (e) { return 'dev'; }
+})();
+
+let reloadWanted = false;
+
+/* Never interrupt someone mid-action: a reload while a sheet is open loses
+ * whatever they were typing. Take the first moment the screen is idle —
+ * closing a sheet just removes it, so there is nothing to hook into, and
+ * looking once a second costs nothing. */
+function reloadWhenIdle() {
+  if (reloadWanted) return;
+  reloadWanted = true;
+  const timer = setInterval(() => {
+    if (document.querySelector('.modal-overlay')) return;
+    clearInterval(timer);
+    location.reload();
+  }, 1000);
+}
+
+async function checkForNewBuild() {
+  if (BUILD === 'dev') return;            // running locally, or unstamped
+  try {
+    const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const { v } = await res.json();
+    if (v && v !== BUILD) reloadWhenIdle();
+  } catch (e) { /* offline, or the file is not there yet */ }
+}
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -3484,6 +3532,12 @@ async function main() {
     matchTimer = setTimeout(runAutoMatch, 1200);
     // Keep the Gmail matcher's view of who owes what current.
     scheduleDues();
+  });
+  // Every ten minutes, and whenever the phone comes back to this tab.
+  checkForNewBuild();
+  setInterval(checkForNewBuild, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkForNewBuild();
   });
 }
 
