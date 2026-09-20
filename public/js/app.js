@@ -1089,6 +1089,36 @@ async function logRemoval(ev, su, by) {
   }
 }
 
+/*
+ * Who did what.
+ *
+ * Removals were already recorded; nothing else was. Marking somebody paid,
+ * recording cash, granting a season pass, grading a player, deleting an
+ * account — all of it happened anonymously, which is fine with one exec and
+ * is how a committee ends up arguing about money.
+ *
+ * The exec PIN is shared, so the app cannot prove who was holding the phone.
+ * It records the profile on that device and says so plainly. That is enough
+ * to answer "who marked this paid?" and honest about what it is worth.
+ */
+async function logAction(kind, what, extra = {}) {
+  try {
+    const me = getProfile();
+    await store.addLog({
+      id: uid('lg'),
+      kind,
+      what,
+      by: me?.name || '',
+      byDevice: DEVICE,
+      at: Date.now(),
+      ...extra,
+    });
+  } catch (err) {
+    // Never let the record-keeping stop the thing being recorded.
+    console.error('log', err);
+  }
+}
+
 async function removeSignup(ev, su, by = 'self') {
   const promo = prePromotion(ev, su);
   await logRemoval(ev, su, by);
@@ -1536,6 +1566,7 @@ function renderHome() {
     store.watchPlayers();
     store.watchPayments();
     store.watchRemovals();
+    store.watchLog();
   }
 
   $('#view').innerHTML = `
@@ -1579,6 +1610,7 @@ function renderHome() {
           ${state.events.length ? `<button class="btn btn-ghost" id="btn-season">${esc(t('openSeason'))}</button>` : ''}
           <button class="btn btn-ghost" id="btn-players">${esc(t('playersBtn'))}</button>
           <button class="btn btn-ghost" id="btn-ledger">${esc(t('ledgerBtn'))}</button>
+          <button class="btn btn-ghost" id="btn-log">${esc(t('logBtn'))}</button>
           <button class="btn btn-ghost" id="btn-settings">${esc(t('clubSettings'))}</button>
           ${store.mode === 'demo' ? `<button class="btn btn-ghost" id="btn-reset-demo">${esc(t('resetDemo'))}</button>` : ''}
         </div>
@@ -1599,6 +1631,7 @@ function renderHome() {
 
   $('#btn-edit-profile')?.addEventListener('click', () => openProfileModal());
   $('#btn-contact')?.addEventListener('click', () => openContactModal());
+  $('#btn-log')?.addEventListener('click', openLogModal);
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
@@ -2513,6 +2546,9 @@ function openPlayerAdminModal(ev, su) {
     if (coveredHere) return;
     const next = !su.paid;
     await store.updateSignup(ev.id, su.id, { paid: next, paidAt: next ? Date.now() : null });
+    logAction('paid', t(next ? 'logPaid' : 'logUnpaid', {
+      name: su.name, email: su.email || '\u2014', date: fmtDateShort(ev.date),
+    }));
     su.paid = next;
     paintStatus();
   });
@@ -2535,6 +2571,9 @@ function openPlayerAdminModal(ev, su) {
     if (amount !== null && !isFinite(amount)) { toast(t('badAmount'), 'err'); return; }
     await store.updateSignup(ev.id, su.id, { amountPaid: amount, paidAt: amount ? Date.now() : null });
     su.amountPaid = amount;
+    logAction('amount', amount
+      ? t('logAmount', { name: su.name, amount: fmtMoney(amount), date: fmtDateShort(ev.date) })
+      : t('logAmountCleared', { name: su.name, date: fmtDateShort(ev.date) }));
     toast(amount ? t('amountRecorded', { name: su.name, amount: fmtMoney(amount) }) : t('amountCleared'));
     paintOwed();
     paintStatus();
@@ -2907,6 +2946,8 @@ async function setPlayerLevel(player, rank) {
   if (playerLevel(player) === (rank || null)) return;
   await store.savePlayer({ deviceId: player.deviceId, name: player.name, level: rank || null });
   const l = rank ? levelByRank(rank) : null;
+  logAction('level', l ? t('logLevel', { name: player.name, level: l.label })
+                       : t('logLevelCleared', { name: player.name }));
   toast(l ? t('levelSet', { name: player.name, level: l.label }) : t('levelCleared', { name: player.name }));
 }
 
@@ -2922,6 +2963,9 @@ async function setBattlePass(player, type, lists = null, until = undefined) {
     // for ever, which is how a fall pass kept seating people in May.
     ...(until === undefined ? {} : { passUntil: type ? (until || null) : null }),
   });
+  logAction('pass', type
+    ? t('logPassSet', { name: player.name, type: type.toUpperCase(), until: until || '\u2014' })
+    : t('logPassCleared', { name: player.name }));
   toast(type ? t('battlePassSet', { name: player.name, type: type.toUpperCase() }) : t('battlePassRemoved', { name: player.name }));
 }
 
@@ -3055,6 +3099,7 @@ async function deletePlayerAccount(player) {
     // rows left behind pointing at an account that is gone.
     for (const { ev, su } of spots) await store.deleteSignup(ev.id, su.id);
     if (isAccount) await store.deletePlayer(player.deviceId);
+    logAction('account', t('logAccountDeleted', { name: player.name, email: player.email || '\u2014', n: spots.length }));
     toast(t('accountDeleted', { name: player.name }));
     return true;
   } catch (err) {
@@ -3062,6 +3107,40 @@ async function deletePlayerAccount(player) {
     toast(t('accountDeleteFailed'), 'err');
     return false;
   }
+}
+
+/*
+ * The record of what the execs did. Newest first, kept to the last few
+ * hundred entries — long enough to answer a question about last Saturday,
+ * short enough to stay readable on a phone.
+ */
+function openLogModal() {
+  store.watchLog();
+  const rows = [...(state.log || [])].sort((a, b) => (b.at || 0) - (a.at || 0));
+  const icon = { paid: '$', amount: '$', pass: 'P', level: 'L', account: 'X' };
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('logTitle'))}</h2>
+      <p class="hint">${esc(t('logHint'))}</p>
+      <input class="input" id="lg-q" placeholder="${esc(t('searchPh'))}" autocomplete="off">
+      <div class="summary-list" id="lg-list"></div>
+      <button class="btn btn-primary wide" data-close>${esc(t('close'))}</button>
+    </div>`, { wide: true });
+
+  function paint() {
+    const q = $('#lg-q', ov).value.trim().toLowerCase();
+    const shown = rows.filter(r => !q || matchesQuery([r.what, r.by, r.kind], q));
+    $('#lg-list', ov).innerHTML = shown.length ? shown.map(r => `
+      <div class="entry log-row">
+        <span class="chip chip-muted log-kind">${esc(icon[r.kind] || '\u00b7')}</span>
+        <div class="grow entry-name">
+          <span>${esc(r.what || '')}</span>
+          <small>${esc(fmtStamp(r.at))}${r.by ? ' \u00b7 ' + esc(t('logBy', { name: r.by })) : ' \u00b7 ' + esc(t('logByUnknown'))}</small>
+        </div>
+      </div>`).join('') : `<p class="hint">${esc(rows.length ? t('noMatches') : t('logEmpty'))}</p>`;
+  }
+  $('#lg-q', ov).addEventListener('input', paint);
+  paint();
 }
 
 function openPlayersModal() {
@@ -3462,6 +3541,10 @@ function openSummaryModal(ev) {
       const name = person.name;
       await Promise.all(person.signups.map(su => store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now() })));
       await store.updatePayment(pay.id, { matched: true, matchedTo: name, matchedEvent: ev.id });
+      logAction('paid', t('logMatched', {
+        name, amount: fmtMoney(pay.amount || 0),
+        email: person.signups?.[0]?.email || '\u2014', date: fmtDateShort(ev.date),
+      }));
       await notifyPaymentReceived(ev, [person], pay);
       toast(t('matchedToast', { name, amount: fmtMoney(pay.amount || 0) }));
       ov.remove();

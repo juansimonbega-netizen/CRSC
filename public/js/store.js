@@ -19,6 +19,7 @@
  *   store.deleteSignup(eventId, signupId)
  *   store.savePlayer(player)    -> create or merge (player.deviceId required)
  *   store.deletePlayer(deviceId)
+ *   store.addLog(entry) / store.watchLog()   -> who did what, append-only
  *
  * state = { settings, events: [...], signups: { [eventId]: [...] } }
  */
@@ -377,6 +378,12 @@ function createDemoStore() {
       state.removals.push(record);
       persist();
     },
+    async addLog(entry) {
+      state.log = state.log || [];
+      state.log.push(entry);
+      persist();
+    },
+    watchLog() {},
     resetDemo() {
       state = demoSeed();
       persist();
@@ -401,6 +408,7 @@ async function createFirebaseStore(config) {
   let playersWatcher = null;
   let paymentsWatcher = null;
   let removalsWatcher = null;
+  let logWatcher = null;
 
   function emit() { onChange(state); }
 
@@ -514,6 +522,18 @@ async function createFirebaseStore(config) {
       const { id, ...data } = record;
       await fs.setDoc(fs.doc(db, 'removals', id), data);
     },
+    async addLog(entry) {
+      const { id, ...data } = entry;
+      await fs.setDoc(fs.doc(db, 'log', id), data);
+    },
+    watchLog() {
+      if (logWatcher) return;
+      logWatcher = fs.onSnapshot(fs.query(fs.collection(db, 'log'),
+        fs.orderBy('at', 'desc'), fs.limit(300)), snap => {
+        state.log = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        emit();
+      }, err => console.error('log listener', err));
+    },
   };
 }
 
@@ -537,7 +557,7 @@ async function createArtifactDbStore() {
   const state = { settings: { ...DEFAULT_SETTINGS }, events: [], signups: {}, players: {}, payments: [], removals: [] };
   let onChange = () => {};
   const eventWatchers = {};
-  let playersWatcher = null, paymentsWatcher = null, removalsWatcher = null;
+  let playersWatcher = null, paymentsWatcher = null, removalsWatcher = null, logWatcher = null;
   const emit = () => onChange(state);
   const onErr = where => e => console.error('db ' + where, e);
 
@@ -653,6 +673,18 @@ async function createArtifactDbStore() {
     async addRemoval(record) {
       const { id, ...data } = record;
       await db.doc('removals/' + id).set(data);
+    },
+    async addLog(entry) {
+      const { id, ...data } = entry;
+      await db.doc('log/' + id).set(data);
+    },
+    watchLog() {
+      if (logWatcher) return;
+      logWatcher = db.collection('log').orderBy('at', 'desc').limit(300)
+        .onSnapshot(snap => {
+          state.log = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          emit();
+        }, err => console.error('log listener', err));
     },
   };
 }

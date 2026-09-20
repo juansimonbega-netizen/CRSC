@@ -529,3 +529,4 @@ select.input { appearance: auto; }
 /* ------- reaching the club ------- */
 .contact-row { margin-top: 6px; }
 .ee-bulk { margin-top: 10px; }
+.log-row .log-kind { min-width: 22px; font-weight: 700; }

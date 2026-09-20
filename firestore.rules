@@ -76,6 +76,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // What the execs did: marked paid, granted a pass, graded a player,
+    // deleted an account. Append-only for the same reason the removal log is:
+    // a record you can edit afterwards answers nothing.
+    match /log/{entryId} {
+      allow read: if true;
+      allow create: if
+        request.resource.data.what is string
+        && request.resource.data.what.size() > 0
+        && request.resource.data.what.size() <= 300
+        && (!('by' in request.resource.data) || request.resource.data.by.size() <= 60);
+      allow update, delete: if false;
+    }
+
     match /events/{eventId} {
       allow read: if true;
       allow write: if true;

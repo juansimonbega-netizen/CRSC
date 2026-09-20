@@ -165,6 +165,25 @@ const STRINGS = {
   // Grading a list in the event editor.
   // Keeping thirty-two Saturdays in step without opening thirty-two editors.
   // Club settings an exec can now reach without a code change.
+  // Who did what. The PIN is shared, so this names the device's profile and
+  // says so \u2014 enough to answer "who marked this paid?", honest about its limits.
+  logBtn: ['Exec history', 'Historique des execs'],
+  logTitle: ['What the execs did', 'Ce que les execs ont fait'],
+  logHint: ['Payments, passes, grades and deleted accounts, newest first. The exec PIN is shared, so this names the profile on the device that did it.',
+            'Paiements, passes, niveaux et comptes supprim\u00e9s, du plus r\u00e9cent au plus ancien. Le NIP est partag\u00e9, donc ceci nomme le profil de l\u2019appareil utilis\u00e9.'],
+  logEmpty: ['Nothing recorded yet.', 'Rien d\u2019enregistr\u00e9 pour l\u2019instant.'],
+  logBy: ['on {name}\u2019s device', 'sur l\u2019appareil de {name}'],
+  logByUnknown: ['device with no profile', 'appareil sans profil'],
+  logPaid: ['Marked {name} paid ({email}) for {date}', '{name} marqu\u00e9 pay\u00e9 ({email}) pour le {date}'],
+  logUnpaid: ['Unmarked {name} as paid ({email}) for {date}', '{name} n\u2019est plus marqu\u00e9 pay\u00e9 ({email}) pour le {date}'],
+  logMatched: ['Matched {amount} to {name} ({email}) for {date}', '{amount} attribu\u00e9 \u00e0 {name} ({email}) pour le {date}'],
+  logAmount: ['Recorded {amount} from {name} for {date}', '{amount} re\u00e7u de {name} pour le {date}'],
+  logAmountCleared: ['Cleared the amount recorded for {name} on {date}', 'Montant enregistr\u00e9 pour {name} le {date} effac\u00e9'],
+  logPassSet: ['Gave {name} a {type} season pass, valid until {until}', 'Passe de saison {type} donn\u00e9e \u00e0 {name}, valide jusqu\u2019au {until}'],
+  logPassCleared: ['Removed {name}\u2019s season pass', 'Passe de saison de {name} retir\u00e9e'],
+  logLevel: ['Graded {name} as {level}', '{name} class\u00e9 {level}'],
+  logLevelCleared: ['Cleared {name}\u2019s level', 'Niveau de {name} effac\u00e9'],
+  logAccountDeleted: ['Deleted the account for {name} ({email}) and {n} upcoming spot(s)', 'Compte de {name} ({email}) supprim\u00e9, avec {n} place(s) \u00e0 venir'],
   passPricesLbl: ['Season pass prices (4H, 2H)', 'Prix des passes de saison (4H, 2H)'],
   passPricesHint: ['A transfer for exactly one of these tags the sender\u2019s pass on its own. The Gmail matcher reads them from here too.',
                    'Un virement d\u2019exactement l\u2019un de ces montants attribue la passe automatiquement. Le script Gmail les lit ici aussi.'],
