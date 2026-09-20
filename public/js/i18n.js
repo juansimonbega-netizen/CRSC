@@ -164,6 +164,19 @@ const STRINGS = {
   yourLevelNone: ['No level set yet \u2014 you can join any list.', 'Aucun niveau attribu\u00e9 \u2014 vous pouvez rejoindre n\u2019importe quelle liste.'],
   // Grading a list in the event editor.
   // Keeping thirty-two Saturdays in step without opening thirty-two editors.
+  // Club settings an exec can now reach without a code change.
+  passPricesLbl: ['Season pass prices (4H, 2H)', 'Prix des passes de saison (4H, 2H)'],
+  passPricesHint: ['A transfer for exactly one of these tags the sender\u2019s pass on its own. The Gmail matcher reads them from here too.',
+                   'Un virement d\u2019exactement l\u2019un de ces montants attribue la passe automatiquement. Le script Gmail les lit ici aussi.'],
+  testAmountLbl: ['Test transfer amount', 'Montant du virement de test'],
+  testAmountHint: ['A transfer for exactly this proves the pipeline works and pays for nobody.',
+                   'Un virement d\u2019exactement ce montant prouve que tout fonctionne et ne paie personne.'],
+  // Calling a Saturday off.
+  cancelTell: ['Tell everyone', 'Pr\u00e9venir tout le monde'],
+  cancelAsk: ['Sign-ups for {date} are closed. Email the {n} people on the list to tell them the games are off?',
+              'Les inscriptions pour le {date} sont ferm\u00e9es. Envoyer un courriel aux {n} personnes sur la liste pour les avertir que c\u2019est annul\u00e9?'],
+  cancelSent: ['{n} people told.', '{n} personnes averties.'],
+  cancelSim: ['{n} people would be told (email is not set up here).', '{n} personnes seraient averties (le courriel n\u2019est pas configur\u00e9 ici).'],
   applySeason: ['Use these lists all season', 'Appliquer ces listes \u00e0 la saison'],
   applySeasonHint: ['Copies these lists, caps, prices, grades and time slots onto every Saturday after this one. Nobody loses their spot \u2014 lists that already exist keep their sign-ups.',
                     'Copie ces listes, capacit\u00e9s, prix, niveaux et plages horaires sur tous les samedis suivants. Personne ne perd sa place \u2014 les listes existantes gardent leurs inscriptions.'],
@@ -430,6 +443,11 @@ const STRINGS = {
   emailHeldBody: [
     'Hey {name}!\n\nSign-ups for {date} are open, and your season pass has already saved your spot:\n{where}\n\nWhere: {location}\n\nNothing to pay and nothing to do \u2014 just turn up.\n\nCan\'t make it? Open the sign-up page and tap "Can\'t make it" on your spot, or message us @{insta}. Telling us early lets somebody on the waitlist play.\n\n\u2014 {club}',
     'Salut {name}!\n\nLes inscriptions pour le {date} sont ouvertes, et votre passe de saison vous a d\u00e9j\u00e0 gard\u00e9 votre place\u00a0:\n{where}\n\nO\u00f9\u00a0: {location}\n\nRien \u00e0 payer et rien \u00e0 faire \u2014 venez, c\'est tout.\n\nVous ne pouvez pas venir? Ouvrez la page d\'inscription et touchez \u00ab\u00a0Je ne peux pas venir\u00a0\u00bb sur votre place, ou \u00e9crivez-nous @{insta}. Nous pr\u00e9venir t\u00f4t permet \u00e0 quelqu\'un de la liste d\'attente de jouer.\n\n\u2014 {club}',
+  ],
+  emailCancelSubject: ['CRSC \u2014 {date} is cancelled', 'CRSC \u2014 Le {date} est annul\u00e9'],
+  emailCancelBody: [
+    'Hey {name},\n\nSorry \u2014 the games on {date} are cancelled. Please don\'t come to the gym.\n\nYou owe nothing for this one. If you already paid, an exec will sort it out with you \u2014 message us @{insta}.\n\nSee you next Saturday.\n\n\u2014 {club}',
+    'Salut {name},\n\nD\u00e9sol\u00e9 \u2014 les parties du {date} sont annul\u00e9es. Ne vous d\u00e9placez pas au gymnase.\n\nVous ne devez rien pour cette date. Si vous avez d\u00e9j\u00e0 pay\u00e9, un exec s\'en occupera avec vous \u2014 \u00e9crivez-nous @{insta}.\n\n\u00c0 samedi prochain.\n\n\u2014 {club}',
   ],
   emailPromoSubject: ['CRSC — A spot opened up: you\'re in for {date}!', 'CRSC — Une place s\'est libérée : vous jouez le {date}!'],
   emailPromoBody: [

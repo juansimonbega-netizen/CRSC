@@ -818,6 +818,46 @@ async function notifyPaymentReceived(ev, people, pay = null) {
  * whole point: a held spot nobody frees is a place the waitlist could have
  * had, and it is the most repetitive message in the exec chat.
  */
+/*
+ * Snow, a closed gym, no host. An exec closes the Saturday and every name on
+ * the list still turns up, because nothing told them not to.
+ *
+ * Offered rather than automatic: closing sign-ups also means "the list is
+ * final, come and play", and an email saying the opposite would be worse
+ * than none. The exec says which it is.
+ */
+async function offerCancelNotice(ev) {
+  const people = {};
+  for (const su of eventSignups(ev.id)) {
+    if (su.email) people[identityOf(su)] = people[identityOf(su)] || su;
+  }
+  const who = Object.values(people);
+  if (!who.length) return;
+  if (!await confirmModal(t('cancelAsk', { n: who.length, date: fmtDate(ev.date) }), t('cancelTell'))) return;
+  if (store.mode === 'demo' || !mailerConfigured()) {
+    toast(t('cancelSim', { n: who.length }));
+    return;
+  }
+  let sent = 0;
+  for (const su of who) {
+    const lang = su.lang === 'fr' ? 'fr' : 'en';
+    try {
+      await sendMail({
+        to: su.email,
+        subject: tLang(lang, 'emailCancelSubject', { date: fmtDateLang(ev.date, lang) }),
+        message: tLang(lang, 'emailCancelBody', {
+          name: su.name,
+          date: fmtDateLang(ev.date, lang),
+          insta: state.settings.instagram || '',
+          club: state.settings.clubFullName || 'CRSC',
+        }),
+      });
+      sent++;
+    } catch (err) { console.error('cancel email', err); }
+  }
+  toast(t('cancelSent', { n: sent }));
+}
+
 async function notifySeatHeld(ev, seats) {
   if (store.mode === 'demo' || !mailerConfigured()) return;
   const byPerson = {};
@@ -1562,8 +1602,8 @@ function renderHome() {
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
-  $('#btn-ledger')?.addEventListener('click', openLedgerModal);
-  $('#btn-season-csv')?.addEventListener('click', exportSeasonCsv);
+  $('#btn-ledger')?.addEventListener('click', async () => { await loadWholeSeason(); openLedgerModal(); });
+  $('#btn-season-csv')?.addEventListener('click', async () => { await loadWholeSeason(); exportSeasonCsv(); });
   $('#btn-settings')?.addEventListener('click', openSettingsModal);
   $('#btn-reset-demo')?.addEventListener('click', async () => {
     if (await confirmModal(t('resetDemoConfirm'))) {
@@ -1895,6 +1935,10 @@ function renderEvent(ev) {
     $('#btn-toggle-open')?.addEventListener('click', async () => {
       await store.saveEvent({ ...ev, status: isOpen ? 'closed' : 'open' });
       toast(isOpen ? t('signupsClosed') : t('signupsReopened'));
+      // Closing a Saturday is usually a cancelled game. Everyone on the list
+      // finds out at the door unless somebody tells them, and "somebody"
+      // was nobody.
+      if (isOpen) await offerCancelNotice(ev);
     });
   }
 }
@@ -2712,6 +2756,20 @@ function exportSeasonCsv() {
   toast(t('seasonExported', { n: played.length }));
 }
 
+/*
+ * The season ledger totals what has loaded, and past weeks load on demand —
+ * so a figure read the instant the app opens could be low. Ask for every
+ * past week first and give the snapshots a moment to land.
+ */
+async function loadWholeSeason() {
+  const missing = state.events.filter(e => !signupsLoaded(e.id));
+  if (!missing.length) return;
+  missing.forEach(e => store.watchEvent(e.id));
+  for (let i = 0; i < 20 && state.events.some(e => !signupsLoaded(e.id)); i++) {
+    await new Promise(r => setTimeout(r, 150));
+  }
+}
+
 function openLedgerModal() {
   const rows = seasonLedger();
   const debtors = rows.filter(r => r.owed > 0);
@@ -3313,7 +3371,7 @@ function openSummaryModal(ev) {
               <div class="row gap">
                 ${unpaid.length ? `
                   <select class="input grow" data-match-sel>
-                    ${unpaid.map(u => `<option value="${esc(u.name)}" ${sug && sug.name === u.name ? 'selected' : ''}>${esc(u.name)} (${fmtMoney(u.total)})</option>`).join('')}
+                    ${unpaid.map((u, i) => `<option value="${i}" ${sug && sug.name === u.name ? 'selected' : ''}>${esc(u.name)}${u.signups?.[0]?.email ? ' · ' + esc(u.signups[0].email) : ''} (${fmtMoney(u.total)})</option>`).join('')}
                   </select>
                   <button class="btn btn-small btn-success" data-match-go>✓</button>` : `<span class="hint grow">${esc(t('noUnpaidHere'))}</span>`}
                 <button class="btn btn-small btn-ghost" data-match-x title="${esc(t('dismiss'))}">✕</button>
@@ -3397,9 +3455,11 @@ function openSummaryModal(ev) {
     const pay = pays.find(p => p.id === row.dataset.pay);
     const go = $('[data-match-go]', row);
     if (go) go.addEventListener('click', async () => {
-      const name = $('[data-match-sel]', row).value;
-      const person = unpaid.find(u => u.name === name);
+      // Picked by position, not by name: two members share a name often
+      // enough that settling by name could quietly pay off the wrong one.
+      const person = unpaid[+$('[data-match-sel]', row).value];
       if (!person) return;
+      const name = person.name;
       await Promise.all(person.signups.map(su => store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now() })));
       await store.updatePayment(pay.id, { matched: true, matchedTo: name, matchedEvent: ev.id });
       await notifyPaymentReceived(ev, [person], pay);
@@ -3740,6 +3800,15 @@ function openSettingsModal() {
         <input class="input" id="cs-latefee" value="${esc(s.lateFeeNote || '')}">
         <label class="field-label">${esc(t('lateFeeAmountLbl'))}</label>
         <input class="input input-num" id="cs-latefeeamt" type="number" min="0" step="1" value="${esc(s.lateFeeAmount ?? 5)}">
+        <label class="field-label">${esc(t('passPricesLbl'))}</label>
+        <div class="row gap">
+          <input class="input input-num grow" id="cs-pass4" type="number" min="0" step="1" value="${esc(s.passPrice4h ?? 135)}" title="4H">
+          <input class="input input-num grow" id="cs-pass2" type="number" min="0" step="1" value="${esc(s.passPrice2h ?? 75)}" title="2H">
+        </div>
+        <p class="hint">${esc(t('passPricesHint'))}</p>
+        <label class="field-label">${esc(t('testAmountLbl'))}</label>
+        <input class="input input-num" id="cs-test" type="number" min="0" step="1" value="${esc(s.testAmount ?? 1)}">
+        <p class="hint">${esc(t('testAmountHint'))}</p>
         <label class="field-label">${esc(t('signupOpenLbl'))}</label>
         <input class="input input-num" id="cs-openahead" type="number" min="0" step="1" value="${esc(s.signupOpenDaysBefore ?? 6)}">
         <label class="field-label">${esc(t('battlePassNoteLbl'))}</label>
@@ -3763,6 +3832,11 @@ function openSettingsModal() {
       seasonEnd: $('#cs-season', ov).value || s.seasonEnd || '',
       lateFeeNote: $('#cs-latefee', ov).value.trim(),
       lateFeeAmount: parseFloat($('#cs-latefeeamt', ov).value) || 0,
+      // The Gmail matcher reads these from here too, so a price only ever
+      // exists in one place.
+      passPrice4h: parseFloat($('#cs-pass4', ov).value) || 0,
+      passPrice2h: parseFloat($('#cs-pass2', ov).value) || 0,
+      testAmount: parseFloat($('#cs-test', ov).value) || 0,
       signupOpenDaysBefore: parseFloat($('#cs-openahead', ov).value) || 0,
       battlePassNote: $('#cs-bpnote', ov).value.trim(),
       policies: $('#cs-policies', ov).value.split('\n').map(x => x.trim()).filter(Boolean),

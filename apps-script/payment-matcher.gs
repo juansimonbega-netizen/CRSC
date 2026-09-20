@@ -28,12 +28,27 @@
 var PROJECT_ID = 'crsc-8fec4';
 var API_KEY = 'AIzaSyB7tE4RwcQgmAIIxdyISjQwbamEDmts_hQ';
 
-// Must match the same-named settings in the app. A transfer for exactly the
-// test amount proves the pipeline and pays for nothing; a transfer for a pass
-// price is left for the app, which owns the player registry.
-var TEST_AMOUNT = 1;
-var PASS_4H = 135;
-var PASS_2H = 75;
+// The amounts that mean something other than one night's game fee: the test
+// dollar, and the two season-pass prices. They are read from the club's own
+// settings in the database, so changing a price in the app changes it here
+// too — they used to be written down twice and could drift apart silently.
+// The numbers below are only the fallback if the settings cannot be read.
+var FALLBACK = { testAmount: 1, passPrice4h: 135, passPrice2h: 75 };
+
+function clubSettings() {
+  try {
+    var doc = JSON.parse(UrlFetchApp.fetch(fsUrl('config/main'),
+      { muteHttpExceptions: true }).getContentText() || '{}');
+    if (!doc.fields) return FALLBACK;
+    var n = function (k) {
+      var v = val(doc, k);
+      return (v === null || v === undefined || v === '') ? FALLBACK[k] : Number(v);
+    };
+    return { testAmount: n('testAmount'), passPrice4h: n('passPrice4h'), passPrice2h: n('passPrice2h') };
+  } catch (e) {
+    return FALLBACK;
+  }
+}
 
 /*
  * Banks do not agree on how to word a transfer notification. The sender may
@@ -155,10 +170,11 @@ function settleTransfers() {
     };
   });
 
+  var cfg = clubSettings();
   pending.forEach(function (pay) {
     var amount = cents(val(pay, 'amount'));
-    if (amount <= 0 || amount === cents(TEST_AMOUNT)) return;   // $1 = pipeline test
-    if (amount === cents(PASS_4H) || amount === cents(PASS_2H)) return; // pass: the app tags it
+    if (amount <= 0 || amount === cents(cfg.testAmount)) return;   // $1 = pipeline test
+    if (amount === cents(cfg.passPrice4h) || amount === cents(cfg.passPrice2h)) return; // pass: the app tags it
 
     var sender = val(pay, 'sender') || '';
     var text = sender + ' ' + (val(pay, 'message') || '');
