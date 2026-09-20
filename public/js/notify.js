@@ -43,14 +43,30 @@ export function promotionCandidate(entries, cap, signup) {
 }
 
 /*
- * Payment reminders go out in the 24 hours before the event (first session
- * starts around 5:30 PM, so the window opens the evening before) and stay
- * open through the event day itself.
+ * Which reminder somebody who still owes should get right now.
+ *
+ * Three, because one was not enough: three days out, when there is still
+ * time to send a transfer without thinking about it; the day before; and a
+ * few hours before the whistle. The first session starts around 5:30 PM, so
+ * every window is measured back from there.
+ *
+ * Only the most urgent one that applies is returned, and each is sent at
+ * most once. That matters more than it looks: somebody who first opens the
+ * app on Saturday morning gets the "in a few hours" note and not all three
+ * at once, and a stage whose moment has passed is simply skipped rather
+ * than arriving late and useless.
  */
-export function reminderDue(ev, now = new Date()) {
-  if (!ev.date || ev.status !== 'open') return false;
-  const eventStart = new Date(ev.date + 'T17:00:00');
-  const windowStart = new Date(eventStart.getTime() - 24 * 3600 * 1000);
-  const windowEnd = new Date(ev.date + 'T23:59:59');
-  return now >= windowStart && now <= windowEnd;
+export function reminderStage(ev, now = new Date()) {
+  if (!ev.date || ev.status !== 'open') return null;
+  const start = new Date(ev.date + 'T17:00:00');
+  if (now > start) return null;                    // the game has started
+  // Counted in nights, not hours, because that is how the email reads and
+  // how the reader thinks. Friday lunchtime is "tomorrow" to a person and
+  // twenty-nine hours to a clock; the subject line has to be true.
+  const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((midnight(start) - midnight(now)) / 86400000);
+  if (days === 0) return 'soon';                   // today
+  if (days === 1) return 'day';                    // tomorrow
+  if (days === 2 || days === 3) return 'three';    // later this week
+  return null;                                      // too early to be useful
 }

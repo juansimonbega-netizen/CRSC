@@ -371,13 +371,32 @@ const STRINGS = {
     'Hey {name}!\n\nYou\'re on the list for {date}:\n{lists}\n\n{payLine}\n{late}\n\nWhere: {location}\n\nCan\'t make it? Please remove your name on the sign-up page so someone on the waitlist can take your spot.\n\n— {club}',
     'Salut {name}!\n\nVous êtes inscrit pour le {date} :\n{lists}\n\n{payLine}\n{late}\n\nOù : {location}\n\nVous ne pouvez plus venir? Retirez votre nom sur la page d\'inscription pour libérer votre place.\n\n— {club}',
   ],
-  emailRemSubject: ['CRSC — Payment reminder for {date}', 'CRSC — Rappel de paiement : {date}'],
-  emailRemBody: [
-    'Hey {name}!\n\nYour game is coming up ({date}) and our list shows {total} still unpaid.\n\n{payLine}\n{late}\n\nAlready paid? Then ignore this — an exec will confirm it shortly.\n\nWhen you arrive at the gym, open the sign-up page and tap "I\'m here" to check in.\n\n— {club}',
-    'Salut {name}!\n\nVotre partie approche ({date}) et notre liste indique {total} non payé.\n\n{payLine}\n{late}\n\nDéjà payé? Ignorez ce message — un exec le confirmera sous peu.\n\nEn arrivant au gymnase, ouvrez la page d\'inscription et touchez « Je suis là » pour confirmer votre présence.\n\n— {club}',
+  // Three reminders, not one. Each says what is owed, how to send it, and
+  // what the late fee is — nobody should meet that fee for the first time
+  // when they are being charged it.
+  lateFeePolicy: ['Heads up: payment after the event costs an extra {amount}.',
+                  '\u00c0 noter\u00a0: un paiement apr\u00e8s l\u2019\u00e9v\u00e9nement co\u00fbte {amount} de plus.'],
+
+  emailRemSubject_three: ['CRSC \u2014 {date} is coming up', 'CRSC \u2014 Le {date} approche'],
+  emailRemBody_three: [
+    'Hey {name}!\n\nYou\'re on the list for {date} and our sheet shows {total} still to pay.\n\n{payLine}\n\n{late}\n\nCan\'t make it after all? Take your name off on the sign-up page so somebody on the waitlist can play.\n\n\u2014 {club}',
+    'Salut {name}!\n\nVous \u00eates sur la liste pour le {date} et notre feuille indique {total} \u00e0 payer.\n\n{payLine}\n\n{late}\n\nFinalement vous ne pouvez pas venir? Retirez votre nom sur la page d\'inscription pour qu\'une personne de la liste d\'attente puisse jouer.\n\n\u2014 {club}',
   ],
+
+  emailRemSubject_day: ['CRSC \u2014 You play tomorrow ({date})', 'CRSC \u2014 Vous jouez demain ({date})'],
+  emailRemBody_day: [
+    'Hey {name}!\n\nYou play tomorrow, {date}, and {total} is still unpaid.\n\n{payLine}\n\n{late}\n\nWhere: {location}\n\nAlready paid? Ignore this \u2014 an exec will confirm it shortly.\n\n\u2014 {club}',
+    'Salut {name}!\n\nVous jouez demain, le {date}, et {total} reste \u00e0 payer.\n\n{payLine}\n\n{late}\n\nO\u00f9\u00a0: {location}\n\nD\u00e9j\u00e0 pay\u00e9? Ignorez ce message \u2014 un exec le confirmera sous peu.\n\n\u2014 {club}',
+  ],
+
+  emailRemSubject_soon: ['CRSC \u2014 You play today: {total} to settle', 'CRSC \u2014 Vous jouez aujourd\u2019hui\u00a0: {total} \u00e0 r\u00e9gler'],
+  emailRemBody_soon: [
+    'Hey {name}!\n\nYou play tonight and {total} is still unpaid.\n\n{payLine}\n\n{late}\n\nWhere: {location}\n\nWhen you get to the gym, open the sign-up page and tap "I\'m here" to check in.\n\n\u2014 {club}',
+    'Salut {name}!\n\nVous jouez ce soir et {total} reste \u00e0 payer.\n\n{payLine}\n\n{late}\n\nO\u00f9\u00a0: {location}\n\nEn arrivant au gymnase, ouvrez la page d\'inscription et touchez \u00ab\u00a0Je suis l\u00e0\u00a0\u00bb pour confirmer votre pr\u00e9sence.\n\n\u2014 {club}',
+  ],
+
   // A pass holder never signs up, so this is the only warning they get that
-  // Saturday is coming — and the week they need to say they cannot make it.
+  // Saturday is coming \u2014 and the week they need to say they cannot come.
   emailHeldSubject: ['CRSC \u2014 Your spot is held for {date}', 'CRSC \u2014 Votre place est r\u00e9serv\u00e9e pour le {date}'],
   emailHeldBody: [
     'Hey {name}!\n\nSign-ups for {date} are open, and your season pass has already saved your spot:\n{where}\n\nWhere: {location}\n\nNothing to pay and nothing to do \u2014 just turn up.\n\nCan\'t make it? Open the sign-up page and tap "Can\'t make it" on your spot, or message us @{insta}. Telling us early lets somebody on the waitlist play.\n\n\u2014 {club}',

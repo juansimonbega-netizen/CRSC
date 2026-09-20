@@ -2,7 +2,7 @@ import {
   createStore, SPORTS, LEVELS, levelByRank, listLevel, uid, deviceId, setDeviceId, makeTemplateEvent, nextSaturday, saturdaysUntil, localISO,
 } from './store.js';
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
-import { promotionCandidate, sendMail, mailerConfigured, reminderDue } from './notify.js';
+import { promotionCandidate, sendMail, mailerConfigured, reminderStage } from './notify.js';
 import { resolvePayment, nameHits, passPurchase, isTestTransfer, normalize } from './automatch.js';
 
 /* ================================================================== */
@@ -873,6 +873,18 @@ async function notifyPassActivated(player, type, amount) {
  */
 let remindersRunning = false;
 let remindersSimulated = false;
+/*
+ * The late-fee sentence. The club's own note if they wrote one, otherwise a
+ * plain statement of the policy built from the amount — people should never
+ * meet the late fee for the first time when they are being charged it.
+ */
+function lateFeeLine(lang) {
+  const note = (state.settings.lateFeeNote || '').trim();
+  if (note) return note;
+  const amt = parseFloat(state.settings.lateFeeAmount);
+  return amt ? tLang(lang, 'lateFeePolicy', { amount: fmtMoney(amt) }) : '';
+}
+
 async function runPaymentReminders() {
   if (remindersRunning) return;
   remindersRunning = true;
@@ -880,7 +892,10 @@ async function runPaymentReminders() {
     const live = store.mode !== 'demo' && mailerConfigured();
     let sent = 0;
     for (const ev of state.events) {
-      if (!reminderDue(ev)) continue;
+      const stage = reminderStage(ev);
+      if (!stage) continue;
+      // Which flag on the sign-up says this particular reminder has gone.
+      const mark = { three: 'rem3dAt', day: 'rem1dAt', soon: 'remSoonAt' }[stage];
       store.watchEvent(ev.id);
       const signups = state.signups[ev.id];
       if (!signups) continue; // not loaded yet; a later pass will handle it
@@ -888,7 +903,7 @@ async function runPaymentReminders() {
       const covered = coveredSignupIds(ev);
       const persons = {};
       for (const su of signups) {
-        if (su.paid || covered.has(su.id) || !su.email || su.paymentReminderSentAt) continue;
+        if (su.paid || covered.has(su.id) || !su.email || su[mark]) continue;
         const k = personKey(su);
         (persons[k] = persons[k] || []).push(su);
       }
@@ -899,17 +914,18 @@ async function runPaymentReminders() {
         if (total === 0) continue;
         if (live) {
           // claim before sending so a second open tab can't double-send
-          await Promise.all(sus.map(x => store.updateSignup(ev.id, x.id, { paymentReminderSentAt: Date.now() })));
+          await Promise.all(sus.map(x => store.updateSignup(ev.id, x.id, { [mark]: Date.now() })));
           try {
             await sendMail({
               to: su.email,
-              subject: tLang(lang, 'emailRemSubject', { date: fmtDateLang(ev.date, lang) }),
-              message: tLang(lang, 'emailRemBody', {
+              subject: tLang(lang, 'emailRemSubject_' + stage, { date: fmtDateLang(ev.date, lang) }),
+              message: tLang(lang, 'emailRemBody_' + stage, {
                 name: su.name,
                 date: fmtDateLang(ev.date, lang),
                 total: fmtMoney(total),
                 payLine: payLineFor(lang, su.method, total),
-                late: state.settings.lateFeeNote || '',
+                late: lateFeeLine(lang),
+                location: ev.location || state.settings.location || '',
                 club: state.settings.clubFullName || 'CRSC',
               }),
             });
