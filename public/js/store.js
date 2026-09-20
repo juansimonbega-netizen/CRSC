@@ -31,10 +31,22 @@ export const DEFAULT_SETTINGS = {
   instagram: 'crsc_concordia',
   location: 'Collège de Maisonneuve, 2701 rue Nicolet, H1X 1Z8, 3rd floor',
   execPin: '1405',
-  // The sign-in door is offered before it is compulsory. An exec turns this
-  // on once the team and the regulars all have accounts; until then the app
-  // works exactly as it did, so nobody is locked out mid-season.
-  requireSignIn: false,
+  /*
+   * How much the app asks of a Google or email sign-in. One setting rather
+   * than two switches, because the three states are a sequence and the club
+   * moves along it when it decides to, not when a deploy does:
+   *
+   *   'off'      nothing about sign-in is shown. The PIN is how an exec gets
+   *              in, and the app behaves exactly as it did before any of
+   *              this existed. This is the default.
+   *   'optional' sign-in is offered. An address on the exec list gets exec
+   *              powers; the PIN still works for everyone who has not.
+   *   'required' nobody gets in without signing in, and the PIN is retired.
+   *
+   * Moving to 'optional' needs Google and email-link sign-in switched on in
+   * the Firebase console first, or the buttons have nothing to talk to.
+   */
+  signInMode: 'off',
   seasonEnd: '2026-12-26',
   lateFeeNote: '+5$ late fee if payment is made after the event',
   lateFeeAmount: 5,

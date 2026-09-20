@@ -153,6 +153,13 @@ function saveProfile(p) {
  * session flag still opens exec mode, which is what makes the demo and the
  * whole test suite work without accounts.
  */
+/* How much sign-in the club is asking for today. See DEFAULT_SETTINGS. */
+function signInMode() {
+  const m = state.settings?.signInMode;
+  return m === 'optional' || m === 'required' ? m : 'off';
+}
+function signInOffered() { return authReady() && signInMode() !== 'off'; }
+
 function execEmails() {
   const list = state.settings?.execEmails;
   return Array.isArray(list) ? list.map(e => String(e).trim().toLowerCase()).filter(Boolean) : [];
@@ -167,7 +174,7 @@ function isExec() {
   // The PIN is on its way out, and still the way in for an exec who has
   // not signed in yet. It stops working the moment the club requires
   // sign-in, which is the point at which everyone has an account.
-  if (state.settings.requireSignIn && authReady()) return false;
+  if (signInMode() === 'required' && authReady()) return false;
   return sessionStorage.getItem('crsc-exec') === '1';
 }
 function setExec(on) {
@@ -1353,7 +1360,7 @@ function render() {
   // is offered and optional, so nobody is shut out of the app while the
   // team is still getting accounts — and so a Firebase project that has
   // not had its sign-in methods enabled yet cannot lock everybody out.
-  if (authReady() && !currentUser() && state.settings.requireSignIn) { renderSignIn(); return; }
+  if (authReady() && !currentUser() && signInMode() === 'required') { renderSignIn(); return; }
   if (!getProfile()) { renderWelcome(); return; }
   if (r.view === 'event') {
     const ev = state.events.find(e => e.id === r.eventId);
@@ -1379,7 +1386,7 @@ function renderHeader() {
       ${isExec() ? `<span class="chip chip-exec-tag">${esc(t('execTag'))}</span>` : ''}
       ${authReady() && currentUser()
         ? `<button class="btn btn-small btn-ghost" id="btn-signout">${esc(t('signOut'))}</button>`
-        : authReady()
+        : signInOffered()
           ? `<button class="btn btn-small btn-primary" id="btn-signin">${esc(t('signInBtn'))}</button>
              ${isExec() ? `<button class="btn btn-small btn-ghost" id="btn-exec-off">${esc(t('execOff'))}</button>`
                         : `<button class="btn btn-tiny btn-ghost" id="btn-exec-on">${esc(t('execBtn'))}</button>`}`
@@ -1430,7 +1437,7 @@ function renderSignIn() {
       <button class="btn btn-ghost wide" id="si-link">${esc(t('signInSendLink'))}</button>
       <p class="hint" id="si-note">${esc(t('signInLinkNote'))}</p>
       ${s.policiesUrl ? `<p class="hint"><a href="${esc(s.policiesUrl)}" target="_blank" rel="noopener">${esc(t('policiesLink'))}</a></p>` : ''}
-      ${!s.requireSignIn ? `<button class="btn btn-ghost wide" id="si-later">${esc(t('signInLater'))}</button>` : ''}
+      ${signInMode() !== 'required' ? `<button class="btn btn-ghost wide" id="si-later">${esc(t('signInLater'))}</button>` : ''}
     </div>`;
   $('#si-later')?.addEventListener('click', () => render());
 
@@ -4090,16 +4097,17 @@ function openSettingsModal() {
         <input class="input" id="cs-location" value="${esc(s.location || '')}">
         <label class="field-label">${esc(t('instaHandle'))}</label>
         <input class="input" id="cs-insta" value="${esc(s.instagram || '')}">
-        ${!s.requireSignIn ? `
+        ${signInMode() !== 'required' ? `
           <label class="field-label">${esc(t('execPinLbl'))}</label>
           <input class="input" id="cs-pin" value="${esc(s.execPin || '')}" maxlength="12">
           <p class="hint">${esc(t('execPinHint'))}</p>` : ''}
-        <label class="field-label">${esc(t('requireSignInLbl'))}</label>
-        <label class="pay-opt">
-          <input type="checkbox" id="cs-require" ${s.requireSignIn ? 'checked' : ''}>
-          <span>${esc(t('requireSignInOpt'))}</span>
-        </label>
-        <p class="hint">${esc(t('requireSignInHint'))}</p>
+        <label class="field-label">${esc(t('signInModeLbl'))}</label>
+        <select class="input" id="cs-signin">
+          <option value="off" ${signInMode() === 'off' ? 'selected' : ''}>${esc(t('signInModeOff'))}</option>
+          <option value="optional" ${signInMode() === 'optional' ? 'selected' : ''}>${esc(t('signInModeOptional'))}</option>
+          <option value="required" ${signInMode() === 'required' ? 'selected' : ''}>${esc(t('signInModeRequired'))}</option>
+        </select>
+        <p class="hint">${esc(t('signInModeHint'))}</p>
         <label class="field-label">${esc(t('seasonEndLbl'))}</label>
         <input class="input" id="cs-season" type="date" value="${esc(s.seasonEnd || '')}">
         <label class="field-label">${esc(t('lateFeeLbl'))}</label>
@@ -4130,14 +4138,17 @@ function openSettingsModal() {
       </div>
     </div>`, { wide: true });
   $('#cs-save', ov).addEventListener('click', async () => {
-    const turningOn = $('#cs-require', ov).checked && !s.requireSignIn;
-    if (turningOn && !await confirmModal(t('requireSignInAsk'), t('requireSignInGo'))) return;
+    const want = $('#cs-signin', ov).value;
+    if (want === 'required' && signInMode() !== 'required'
+        && !await confirmModal(t('requireSignInAsk'), t('requireSignInGo'))) return;
+    if (want === 'optional' && signInMode() === 'off'
+        && !await confirmModal(t('offerSignInAsk'), t('offerSignInGo'))) return;
     await store.saveSettings({
       etransferEmail: $('#cs-email', ov).value.trim(),
       location: $('#cs-location', ov).value.trim(),
       instagram: $('#cs-insta', ov).value.trim().replace(/^@/, ''),
       ...($('#cs-pin', ov) ? { execPin: $('#cs-pin', ov).value.trim() || '1405' } : {}),
-      requireSignIn: $('#cs-require', ov).checked,
+      signInMode: $('#cs-signin', ov).value,
       seasonEnd: $('#cs-season', ov).value || s.seasonEnd || '',
       lateFeeNote: $('#cs-latefee', ov).value.trim(),
       lateFeeAmount: parseFloat($('#cs-latefeeamt', ov).value) || 0,

@@ -17,7 +17,7 @@ const d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7));
 const DATE = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const fixture = {
-  settings: { execEmails: ['juansimonbega@gmail.com', 'essma.snechi@gmail.com'], requireSignIn: true },
+  settings: { execEmails: ['juansimonbega@gmail.com', 'essma.snechi@gmail.com'], signInMode: 'required' },
   removals: [], payments: [], log: [], players: {},
   events: [{ id: 'ev', title: 'S', date: DATE, status: 'open', location: 'X',
     sessions: [{ id: 's1', label: '5:30 - 7:30 PM' }],
@@ -110,9 +110,9 @@ console.log('can remove self  :', guards.canDropSelf, '(must be false)');
 //
 // Sign-in shipped before the club had turned it on, and before Firebase had
 // its sign-in methods enabled. If the door went up on its own, every member
-// AND every exec would be standing outside an app nobody could open. Until
-// the club sets requireSignIn, being signed out has to change nothing.
-const notYet = await open(null, { requireSignIn: false });
+// AND every exec would be standing outside an app nobody could open. While
+// sign-in is merely offered, being signed out has to change nothing.
+const notYet = await open(null, { signInMode: 'optional' });
 const stillWorks = await notYet.evaluate(() => ({
   door: !!document.querySelector('#si-google'),
   calendar: !!document.querySelector('.cal-grid, .calendar, .cal-month'),
@@ -120,8 +120,25 @@ const stillWorks = await notYet.evaluate(() => ({
 }));
 console.log('door not turned on:', JSON.stringify(stillWorks), '(door must be false, calendar true)');
 
+// 5. And the state the club is actually in: sign-in off entirely.
+//
+// Firebase auth has never been switched on, so a sign-in button would lead
+// nowhere. With the mode off, nothing about it should be visible anywhere —
+// the app is exactly what it was before any of this was built.
+const off = await open(null, { signInMode: 'off' });
+const asBefore = await off.evaluate(() => ({
+  door: !!document.querySelector('#si-google'),
+  signInBtn: !!document.querySelector('#btn-signin'),
+  signOutBtn: !!document.querySelector('#btn-signout'),
+  pinBtn: !!document.querySelector('#btn-exec-on'),
+  calendar: !!document.querySelector('.cal-grid, .calendar, .cal-month'),
+}));
+console.log('sign-in switched off:', JSON.stringify(asBefore), '(only pinBtn and calendar)');
+
 console.log('errors:', errs.length ? errs : 'none');
-const ok = !stillWorks.door && stillWorks.calendar && stillWorks.offered
+const ok = !asBefore.door && !asBefore.signInBtn && !asBefore.signOutBtn
+        && asBefore.pinBtn && asBefore.calendar
+        && !stillWorks.door && stillWorks.calendar && stillWorks.offered
         && door.signIn && !door.calendar && !door.execTools && linkTo === 'someone@hotmail.com'
         && !asMember.execTools && !asMember.execsBtn && !asMember.tag
         && asExec.execTools && asExec.execsBtn && asExec.tag
