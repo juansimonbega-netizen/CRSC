@@ -3474,6 +3474,98 @@ function sportOptions(sel) {
   return Object.entries(SPORTS).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${v.label}</option>`).join('');
 }
 
+/*
+ * Push one Saturday's lists onto every Saturday still to come.
+ *
+ * Thirty-two Saturdays run on the same shape, so changing a cap or a price
+ * or a grade meant opening thirty-two editors, or not bothering — which is
+ * how a season drifts apart from the one before it.
+ *
+ * Matched by slot, sport and label, and the matching list keeps its own id:
+ * sign-ups point at those ids, and replacing one would orphan everybody on
+ * it. A list on a later Saturday that this one does not have is removed
+ * only when nobody has signed up for it; otherwise it stays and is
+ * reported, because quietly deleting somebody's spot is worse than leaving
+ * one list out of step.
+ */
+async function applyListsToSeason(src) {
+  const targets = state.events.filter(e =>
+    e.id !== src.id && !isPastEvent(e) && e.date > src.date);
+  if (!targets.length) { toast(t('nothingLater'), 'warn'); return; }
+  if (!await confirmModal(
+    t('applySeasonConfirm', { n: targets.length, date: fmtDate(src.date) }), t('applySeason'))) return;
+
+  const key = l => `${l.sessionId}|${l.sport}|${(l.label || '').trim().toLowerCase()}`;
+  let kept = 0;
+  for (const ev of targets) {
+    const have = {};
+    for (const l of ev.lists || []) have[key(l)] = l;
+    const lists = [];
+    for (const tpl of src.lists) {
+      const mine = have[key(tpl)];
+      if (mine) {
+        // Same list, new numbers. The id stays, so nobody loses their spot.
+        lists.push({ ...mine, cap: tpl.cap, priceE: tpl.priceE, priceC: tpl.priceC,
+                     level: tpl.level ?? 0, teamCount: tpl.teamCount || 0 });
+        delete have[key(tpl)];
+      } else {
+        lists.push({ ...tpl, id: uid('l') });
+      }
+    }
+    // Anything left over is a list this Saturday has and the template does
+    // not. Empty ones go; ones with names on them stay.
+    for (const leftover of Object.values(have)) {
+      if (listEntries(ev.id, leftover.id).length) { lists.push(leftover); kept++; }
+    }
+    await store.saveEvent({ ...ev, lists,
+      sessions: JSON.parse(JSON.stringify(src.sessions || ev.sessions)),
+      bundles: JSON.parse(JSON.stringify(src.bundles || [])) });
+  }
+  toast(t('appliedSeason', { n: targets.length }));
+  if (kept) toast(t('appliedKept', { n: kept }), 'warn');
+}
+
+/* Copy a Saturday onto another date — a one-off extra session, or a week
+ * that needs a different shape, without rebuilding it by hand. */
+function askForDate(title, initial) {
+  return new Promise(resolve => {
+    const ov = openModal(`
+      <div class="modal-body">
+        <h2 class="m0">${esc(title)}</h2>
+        <input class="input" id="ad-date" type="date" value="${esc(initial)}">
+        <div class="row gap">
+          <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
+          <button class="btn btn-primary grow" id="ad-go">${esc(t('ok'))}</button>
+        </div>
+      </div>`);
+    $('#ad-go', ov).addEventListener('click', () => {
+      const v = $('#ad-date', ov).value;
+      ov.remove();
+      resolve(v || null);
+    });
+    ov.addEventListener('click', e => { if (e.target === ov) resolve(null); });
+    $$('[data-close]', ov).forEach(b => b.addEventListener('click', () => resolve(null)));
+  });
+}
+
+async function duplicateEvent(src) {
+  const next = new Date(src.date + 'T12:00:00');
+  next.setDate(next.getDate() + 7);
+  const date = await askForDate(t('duplicateAsk'), localISO(next));
+  if (!date) return;
+  if (state.events.some(e => e.date === date)) { toast(t('dateTaken', { date: fmtDate(date) }), 'err'); return; }
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid('ev');
+  copy.date = date;
+  copy.status = 'open';
+  copy.openEarly = false;
+  copy.createdAt = Date.now();
+  copy.lists = copy.lists.map(l => ({ ...l, id: uid('l') }));
+  await store.saveEvent(copy);
+  toast(t('duplicated', { date: fmtDate(date) }));
+  location.hash = '#/event/' + copy.id;
+}
+
 function openEventEditor(ev, { isNew = false } = {}) {
   const creating = !ev || isNew;
   const draft = ev ? JSON.parse(JSON.stringify(ev)) : makeTemplateEvent(nextSaturday(), 'Saturday Drop-in');
@@ -3511,6 +3603,12 @@ function openEventEditor(ev, { isNew = false } = {}) {
         </select>
         <input class="input input-num" id="ee-bprice" type="number" min="0" step="1" placeholder="$" value="${esc(draft.bundles?.[0]?.priceE ?? '')}">
       </div>
+      ${!creating ? `
+        <div class="row gap wrap ee-bulk">
+          <button class="btn btn-small btn-ghost grow" id="ee-apply">${esc(t('applySeason'))}</button>
+          <button class="btn btn-small btn-ghost grow" id="ee-dup">${esc(t('duplicateEvent'))}</button>
+        </div>
+        <p class="hint">${esc(t('applySeasonHint'))}</p>` : ''}
       <div class="row gap sticky-actions">
         <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
         ${!creating ? `<button class="btn btn-danger" id="ee-delete">${esc(t('deleteBtn'))}</button>` : ''}
@@ -3586,6 +3684,19 @@ function openEventEditor(ev, { isNew = false } = {}) {
     ov.remove();
     toast(creating ? t('eventCreated') : t('eventSaved'));
     location.hash = '#/event/' + draft.id;
+  });
+
+  // Both of these publish the draft first, so what spreads is what is on
+  // screen rather than what was last saved.
+  $('#ee-apply', ov)?.addEventListener('click', async () => {
+    await store.saveEvent(draft);
+    ov.remove();
+    await applyListsToSeason(draft);
+  });
+  $('#ee-dup', ov)?.addEventListener('click', async () => {
+    await store.saveEvent(draft);
+    ov.remove();
+    await duplicateEvent(draft);
   });
 
   const del = $('#ee-delete', ov);
