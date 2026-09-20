@@ -1,0 +1,144 @@
+// ============================================================
+//  DO NOT PUBLISH THIS YET.
+//
+//  These are the stage-two rules: the ones that actually close the hole,
+//  by making the DATABASE enforce who may read and write rather than
+//  trusting the app to ask nicely.
+//
+//  Publishing them before everyone has signed in at least once locks
+//  people out of the club's own app — including an exec at the gym on a
+//  Saturday night. The order is:
+//
+//    1. (done) Sign-in ships. Rules stay open. Everyone signs in over a
+//       week or two, and the exec list fills up.
+//    2. The app changes that go with these rules: members stop reading
+//       the whole player registry and read only their own record, and
+//       the Gmail matcher gets a service account of its own instead of
+//       writing with a public API key.
+//    3. Then, and only then, this file replaces firestore.rules.
+//
+//  Step 2 is real work and is not done. Publishing this file today would
+//  break the players directory, the season pass, and every automatic
+//  payment the Gmail script settles.
+// ============================================================
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- who is asking ----------------------------------------------
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function me() {
+      return request.auth.token.email.lower();
+    }
+    // The exec list is the club's settings, so there is exactly one place
+    // that decides this and execs can change it from inside the app.
+    function isExec() {
+      return signedIn()
+        && me() in get(/databases/$(database)/documents/config/main).data.execEmails;
+    }
+    // A document that belongs to the person asking, by the address they
+    // proved rather than the one they typed.
+    function ownedByMe(data) {
+      return signedIn() && data.email is string && data.email.lower() == me();
+    }
+    // Did this write leave a field alone? Used to let members edit their
+    // own rows without letting them edit the parts that are about money.
+    function unchanged(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
+    }
+
+    // ---- club settings -----------------------------------------------
+    // Prices, location, the season end and the exec list itself. The app
+    // needs these before anybody has signed in, and none of it is private.
+    // Writing them is exec-only, which is what makes the exec list safe:
+    // nobody can add themselves to it without already being on it.
+    match /config/main {
+      allow read: if true;
+      allow write: if isExec();
+    }
+
+    // ---- the player registry ------------------------------------------
+    // The most sensitive collection in the database: every member's email
+    // and phone number. Listing it is exec-only, so it can no longer be
+    // pulled in one request by anyone who knows the address.
+    //
+    // A member may read and write their own record, but not grade
+    // themselves or grant themselves a season pass.
+    match /players/{playerId} {
+      allow read: if isExec() || ownedByMe(resource.data);
+      allow create: if isExec() || (ownedByMe(request.resource.data)
+        && !('level' in request.resource.data)
+        && !('battlePass' in request.resource.data));
+      allow update: if isExec() || (ownedByMe(resource.data) && ownedByMe(request.resource.data)
+        && unchanged('level') && unchanged('battlePass')
+        && unchanged('passLists') && unchanged('passUntil'));
+      allow delete: if isExec();
+    }
+
+    // ---- the Saturdays ------------------------------------------------
+    match /events/{eventId} {
+      allow read: if signedIn();
+      allow write: if isExec();
+
+      // Sign-ups are the one thing members create. Anybody signed in may
+      // add a row — that is how adding a friend works, and the friend's
+      // address is on the row rather than the adder's.
+      //
+      // Editing somebody else's row is allowed too, because waitlist
+      // promotion is written by whichever member's app notices the gap.
+      // What nobody but an exec may touch is the money.
+      match /signups/{signupId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update: if isExec() || (signedIn()
+          && unchanged('paid') && unchanged('amountPaid')
+          && unchanged('paidVia') && unchanged('viaPass'));
+        allow delete: if isExec() || ownedByMe(resource.data);
+      }
+    }
+
+    // ---- money and proof ----------------------------------------------
+    // Received transfers, what each person owes, the removal log and the
+    // exec history. All of it is the club's business and none of it is a
+    // member's, so reading is exec-only.
+    //
+    // The Gmail matcher writes payments and reads dues. It runs as a
+    // service account listed in the exec list, which is why these say
+    // isExec() and not something looser.
+    match /payments/{paymentId} {
+      allow read, write: if isExec();
+    }
+
+    match /dues/{eventId} {
+      allow read, write: if isExec();
+    }
+
+    // Append-only, both of them: a record that can be edited afterwards
+    // answers nothing.
+    match /removals/{removalId} {
+      allow read: if isExec();
+      allow create: if signedIn()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60;
+      allow update, delete: if false;
+    }
+
+    match /log/{entryId} {
+      allow read: if isExec();
+      allow create: if isExec()
+        && request.resource.data.what is string
+        && request.resource.data.what.size() > 0
+        && request.resource.data.what.size() <= 300;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
