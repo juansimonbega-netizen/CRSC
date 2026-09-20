@@ -525,3 +525,6 @@ select.input { appearance: auto; }
   padding: 10px 12px; margin-top: 12px;
   font-size: 13px; font-weight: 700;
 }
+
+/* ------- reaching the club ------- */
+.contact-row { margin-top: 6px; }

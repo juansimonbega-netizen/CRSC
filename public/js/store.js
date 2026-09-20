@@ -85,7 +85,10 @@ export function levelByRank(rank) {
  */
 export function listLevel(list) {
   if (!list || list.sport !== 'volleyball') return 0;   // ungraded
-  if (list.level) return Number(list.level);
+  // An explicit grade always wins, including a deliberate 0 for "anyone".
+  // Only a list made before grades existed falls through to its label, and
+  // that guess breaks the moment somebody renames one.
+  if (list.level !== undefined && list.level !== null && list.level !== '') return Number(list.level);
   const raw = String(list.label || '');
   if (/intermediate|débutant|beginner/i.test(raw)) return 1;
   if (/mix/i.test(raw)) return 3;              // "Adv + Mixed"

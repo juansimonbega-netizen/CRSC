@@ -1450,6 +1450,39 @@ function weekRecordCard(ev) {
     </a>`;
 }
 
+/*
+ * How somebody reaches the club.
+ *
+ * Instagram is where this club actually answers — an email to the general
+ * inbox waits for whoever opens it next, a DM gets a reply the same evening.
+ * So the level request still files itself with the execs by email, and this
+ * is how a member asks about it, or about anything else, and gets an answer.
+ */
+function instagramUrl() {
+  const handle = (state.settings.instagram || '').replace(/^@/, '').trim();
+  return handle ? 'https://instagram.com/' + encodeURIComponent(handle) : '';
+}
+
+function openContactModal(reason = '') {
+  const url = instagramUrl();
+  const handle = (state.settings.instagram || '').replace(/^@/, '');
+  const lvl = levelByRank(playerLevel(DEVICE));
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('contactTitle'))}</h2>
+      ${reason ? `<p class="hint">${esc(reason)}</p>` : ''}
+      <p class="hint">${esc(lvl ? t('yourLevelIs', { level: lvl.label }) : t('yourLevelNone'))}</p>
+      <p>${esc(t('contactBody'))}</p>
+      ${url
+        ? `<a class="btn btn-primary wide" href="${esc(url)}" target="_blank" rel="noopener">${esc(t('contactInsta', { handle }))}</a>`
+        : `<p class="hint">${esc(t('contactNoInsta'))}</p>`}
+      ${state.settings.etransferEmail
+        ? `<a class="btn btn-ghost wide" href="mailto:${esc(state.settings.etransferEmail)}">${esc(t('contactEmail'))}</a>` : ''}
+      <button class="btn btn-ghost wide" data-close>${esc(t('close'))}</button>
+    </div>`);
+  return ov;
+}
+
 function renderHome() {
   const exec = isExec();
   const s = state.settings;
@@ -1477,9 +1510,17 @@ function renderHome() {
         ${avatarHtml(profile)}
         <div class="grow">
           <strong>${esc(profile.name)}</strong>
-          ${profile.insta ? `<small>@${esc(profile.insta)}</small>` : ''}
+          <small>${(() => {
+            // Your own grade, in your own words. People used to find out they
+            // had one only by finding a list locked.
+            const l = levelByRank(playerLevel(DEVICE));
+            return l ? esc(t('yourLevelIs', { level: l.label })) : esc(t('yourLevelNone'));
+          })()}${profile.insta ? ' · @' + esc(profile.insta) : ''}</small>
         </div>
         <button class="btn btn-small btn-ghost" id="btn-edit-profile">${esc(t('edit'))}</button>
+      </div>
+      <div class="row gap wrap contact-row">
+        <button class="btn btn-small btn-ghost" id="btn-contact">${esc(t('contactUs'))}</button>
       </div>` : ''}
 
     <h2 class="section-title">${esc(t('chooseSaturday'))}</h2>
@@ -1517,6 +1558,7 @@ function renderHome() {
     </footer>`;
 
   $('#btn-edit-profile')?.addEventListener('click', () => openProfileModal());
+  $('#btn-contact')?.addEventListener('click', () => openContactModal());
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
@@ -2095,7 +2137,10 @@ function openSwitchSheet(ev, su) {
 
 function openJoinSheet(ev, preselectedListId) {
   const wanted = preselectedListId && listById(ev, preselectedListId);
-  if (wanted && !canSelfJoin(wanted)) { toast(t('levelBlocked'), 'err'); return; }
+  if (wanted && !canSelfJoin(wanted)) {
+    openContactModal(t('levelBlocked'));
+    return;
+  }
   const p = getProfile();
   const myIds = new Set(mySignups(ev.id).map(m => m.listId));
   const s = state.settings;
@@ -2175,6 +2220,8 @@ function openJoinSheet(ev, preselectedListId) {
     });
     b.textContent = t('askSent');
     toast(r.sent ? t('askSentToast') : t('askSentOffline'), r.sent ? 'ok' : 'warn');
+    // The execs now have it in writing. This is how they get an answer tonight.
+    openContactModal(t('askedAbout', { list: `${SPORTS[l?.sport]?.label || ''} — ${l?.label || ''}` }));
   }));
 
   function refreshPrice() {
@@ -3491,13 +3538,20 @@ function openEventEditor(ev, { isNew = false } = {}) {
           <input class="input input-num" data-f="priceE" type="number" min="0" step="1" value="${esc(l.priceE)}">
           <input class="input input-num" data-f="priceC" type="number" min="0" step="1" value="${esc(l.priceC)}">
         </div>
+        <div class="row gap">
+          <select class="input grow" data-f="level" title="${esc(t('gradeLbl'))}">
+            <option value="0" ${!l.level ? 'selected' : ''}>${esc(t('gradeNone'))}</option>
+            ${LEVELS.map(x => `<option value="${x.rank}" ${Number(l.level) === x.rank ? 'selected' : ''}>${esc(t('gradeIs', { level: x.label }))}</option>`).join('')}
+          </select>
+        </div>
         <div class="ee-cols"><span>${esc(t('listCols'))}</span><span>${esc(t('listCols2'))}</span></div>
       </div>`).join('');
     $$('.ee-list', ov).forEach(rowEl => {
       const i = +rowEl.dataset.i;
       $$('[data-f]', rowEl).forEach(inp => inp.addEventListener('change', () => {
         const f = inp.dataset.f;
-        draft.lists[i][f] = (f === 'cap' || f === 'priceE' || f === 'priceC' || f === 'teamCount') ? (parseFloat(inp.value) || 0) : inp.value;
+        const numeric = f === 'cap' || f === 'priceE' || f === 'priceC' || f === 'teamCount' || f === 'level';
+        draft.lists[i][f] = numeric ? (parseFloat(inp.value) || 0) : inp.value;
       }));
     });
     $$('[data-del]', ov).forEach(b => b.addEventListener('click', () => {
@@ -3508,7 +3562,7 @@ function openEventEditor(ev, { isNew = false } = {}) {
   renderLists();
 
   $('#ee-addlist', ov).addEventListener('click', () => {
-    draft.lists.push({ id: uid('l'), sessionId: 's1', sport: 'volleyball', label: '', cap: 14, priceE: 8, priceC: 10, teamCount: 0 });
+    draft.lists.push({ id: uid('l'), sessionId: 's1', sport: 'volleyball', label: '', cap: 14, level: 0, priceE: 8, priceC: 10, teamCount: 0 });
     renderLists();
   });
 

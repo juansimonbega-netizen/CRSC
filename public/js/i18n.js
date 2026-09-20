@@ -151,6 +151,21 @@ const STRINGS = {
   levelModalHint: ['Once graded, this player can only sign themselves up for this level and below. Execs can still place them anywhere by hand.', 'Une fois classé, ce joueur ne peut s\u2019inscrire qu\u2019à ce niveau et aux niveaux inférieurs. Les execs peuvent toujours le placer manuellement.'],
   levelSet: ['{name} graded {level}', '{name} classé {level}'],
   levelCleared: ['{name} is no longer graded', '{name} n\u2019est plus classé'],
+  // Reaching the club. Instagram is where this club actually answers.
+  contactUs: ['Questions? Message us', 'Des questions? \u00c9crivez-nous'],
+  contactTitle: ['Talk to the execs', 'Parler aux execs'],
+  contactBody: ['Level changes, a spot you cannot make, anything about a Saturday \u2014 a DM gets an answer the same evening.',
+                'Changement de niveau, une place que vous ne pouvez pas prendre, n\u2019importe quoi sur un samedi \u2014 un DM re\u00e7oit une r\u00e9ponse le soir m\u00eame.'],
+  contactInsta: ['Message @{handle} on Instagram', '\u00c9crire \u00e0 @{handle} sur Instagram'],
+  contactEmail: ['Or send an email', 'Ou envoyer un courriel'],
+  contactNoInsta: ['No Instagram handle is set in the club settings yet.', 'Aucun compte Instagram n\u2019est encore configur\u00e9 dans les param\u00e8tres.'],
+  askedAbout: ['The execs have your request for {list}.', 'Les execs ont votre demande pour {list}.'],
+  yourLevelIs: ['Your level: {level}', 'Votre niveau\u00a0: {level}'],
+  yourLevelNone: ['No level set yet \u2014 you can join any list.', 'Aucun niveau attribu\u00e9 \u2014 vous pouvez rejoindre n\u2019importe quelle liste.'],
+  // Grading a list in the event editor.
+  gradeLbl: ['Level required', 'Niveau requis'],
+  gradeNone: ['Open to everyone', 'Ouvert \u00e0 tous'],
+  gradeIs: ['{level} and below', '{level} et moins'],
   askExec: ['ask an exec', 'demander à un exec'],
   // Bringing a friend
   addFriendBtn: ['\uFF0B Add someone else', '\uFF0B Ajouter quelqu\u2019un'],
