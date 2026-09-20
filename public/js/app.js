@@ -4,6 +4,7 @@ import {
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
 import { promotionCandidate, sendMail, mailerConfigured, reminderStage } from './notify.js';
 import { resolvePayment, nameHits, passPurchase, isTestTransfer, normalize } from './automatch.js';
+import { initAuth, currentUser, signInWithGoogle, sendEmailLink, signOutNow, authReady } from './auth.js';
 
 /* ================================================================== */
 /* Small utilities                                                     */
@@ -139,7 +140,33 @@ function saveProfile(p) {
   try { localStorage.setItem('crsc-profile', JSON.stringify(p)); } catch (e) { /* ignore */ }
 }
 
-function isExec() { return sessionStorage.getItem('crsc-exec') === '1'; }
+/*
+ * Who may change things.
+ *
+ * It used to be whoever typed four digits, and those four digits sat in a
+ * publicly readable record — so the gate stopped honest accidents and
+ * nothing else. Now it is an allowlist of addresses, checked against the
+ * one the person actually proved by signing in. Execs manage the list
+ * themselves; nobody can add themselves to it without already being on it.
+ *
+ * Demo mode has no Firebase and so nobody to sign in. There the old
+ * session flag still opens exec mode, which is what makes the demo and the
+ * whole test suite work without accounts.
+ */
+function execEmails() {
+  const list = state.settings?.execEmails;
+  return Array.isArray(list) ? list.map(e => String(e).trim().toLowerCase()).filter(Boolean) : [];
+}
+
+function isExec() {
+  if (!authReady()) return sessionStorage.getItem('crsc-exec') === '1';
+  // Lowercased here rather than trusted from the caller: this one
+  // comparison decides who can change the club's money, and Gmail does not
+  // care about capitals even though === does.
+  const me = currentUser();
+  const email = (me?.email || '').trim().toLowerCase();
+  return !!email && execEmails().includes(email);
+}
 function setExec(on) {
   if (on) sessionStorage.setItem('crsc-exec', '1');
   else sessionStorage.removeItem('crsc-exec');
@@ -1319,6 +1346,8 @@ function render() {
   const r = route();
   renderHeader();
   if (r.view === 'adopt') { adoptIdentity(r.payload); return; }
+  // Signed out, on a real database: nothing is shown until they are in.
+  if (authReady() && !currentUser()) { renderSignIn(); return; }
   if (!getProfile()) { renderWelcome(); return; }
   if (r.view === 'event') {
     const ev = state.events.find(e => e.id === r.eventId);
@@ -1341,9 +1370,14 @@ function renderHeader() {
     <div class="header-actions">
       ${store.mode === 'demo' ? `<span class="chip chip-demo" title="${esc(t('demoTitle'))}">DEMO</span>` : ''}
       <button class="btn btn-tiny btn-ghost" id="btn-lang">${other}</button>
-      ${isExec()
-        ? `<button class="btn btn-small btn-exec" id="btn-exec-off">${esc(t('execOnBtn'))}</button>`
-        : `<button class="btn btn-small btn-ghost" id="btn-exec-on">${esc(t('execBtn'))}</button>`}
+      ${authReady()
+        ? (currentUser()
+            ? `${isExec() ? `<span class="chip chip-exec-tag">${esc(t('execTag'))}</span>` : ''}
+               <button class="btn btn-small btn-ghost" id="btn-signout">${esc(t('signOut'))}</button>`
+            : '')
+        : (isExec()
+            ? `<button class="btn btn-small btn-exec" id="btn-exec-off">${esc(t('execOnBtn'))}</button>`
+            : `<button class="btn btn-small btn-ghost" id="btn-exec-on">${esc(t('execBtn'))}</button>`)}
     </div>`;
   $('#btn-lang').addEventListener('click', () => {
     setLang(getLang() === 'fr' ? 'en' : 'fr');
@@ -1353,11 +1387,104 @@ function renderHeader() {
   if (on) on.addEventListener('click', openPinModal);
   const off = $('#btn-exec-off');
   if (off) off.addEventListener('click', () => { setExec(false); toast(t('execModeOff')); render(); });
+  $('#btn-signout')?.addEventListener('click', async () => {
+    if (!await confirmModal(t('signOutAsk'), t('signOut'))) return;
+    try { localStorage.removeItem('crsc-profile'); } catch (e) { /* ignore */ }
+    await signOutNow();
+  });
+}
+
+/* ================================================================== */
+/* The door                                                            */
+/* ================================================================== */
+
+/*
+ * Signing in is how the club knows an address belongs to the person using
+ * it. Everything downstream rests on that: one account per person instead
+ * of one per phone, and an exec list that means something because nobody
+ * can claim an address they cannot open.
+ */
+function renderSignIn() {
+  const s = state.settings;
+  $('#view').innerHTML = `
+    <section class="hero">
+      <h1>${esc(t('heroTitle'))}</h1>
+      <p>${esc(t('tagline'))}</p>
+    </section>
+    <div class="card welcome-card">
+      <p class="hint">${esc(t('signInWhy'))}</p>
+      <button class="btn btn-primary wide" id="si-google">${esc(t('signInGoogle'))}</button>
+      <div class="si-or"><span>${esc(t('orWord'))}</span></div>
+      <label class="field-label" for="si-email">${esc(t('signInEmailLbl'))}</label>
+      <input class="input" id="si-email" type="email" inputmode="email" autocomplete="email"
+             placeholder="${esc(t('emailPh').replace(' *', ''))}">
+      <button class="btn btn-ghost wide" id="si-link">${esc(t('signInSendLink'))}</button>
+      <p class="hint" id="si-note">${esc(t('signInLinkNote'))}</p>
+      ${s.policiesUrl ? `<p class="hint"><a href="${esc(s.policiesUrl)}" target="_blank" rel="noopener">${esc(t('policiesLink'))}</a></p>` : ''}
+    </div>`;
+
+  $('#si-google').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await signInWithGoogle(); }
+    catch (err) { console.error(err); toast(t('signInFailed'), 'err'); e.target.disabled = false; }
+  });
+  $('#si-link').addEventListener('click', async (e) => {
+    const email = $('#si-email').value.trim();
+    e.target.disabled = true;
+    try {
+      await sendEmailLink(email);
+      $('#si-note').textContent = t('signInLinkSent', { email });
+    } catch (err) {
+      console.error(err);
+      toast(/bad email/.test(err.message) ? t('emailRequired') : t('signInFailed'), 'err');
+      e.target.disabled = false;
+    }
+  });
 }
 
 /* ================================================================== */
 /* Registration gate: everyone makes a profile before using the app    */
 /* ================================================================== */
+
+/*
+ * Bring the profile on this device into line with who just signed in.
+ *
+ * Three cases. A brand-new person gets a profile started from their Google
+ * name and address, so registration is one field instead of five. Somebody
+ * the club already knows — matched on the proven address — has their
+ * existing record adopted, history, pass, level and all, whichever phone
+ * they are on. And a device whose profile belongs to somebody else is
+ * simply handed over, because the address is now proof and the leftover
+ * profile is not.
+ */
+function adoptSignedInIdentity(raw) {
+  const me = { ...raw, email: (raw.email || '').trim().toLowerCase() };
+  if (!me.email) return;
+  const known = findPlayerByEmail(me.email);
+  if (known && known.deviceId !== DEVICE) {
+    // Their account already exists; this device becomes that account.
+    setDeviceId(known.deviceId);
+    saveProfile({
+      name: known.name || me.name, email: me.email,
+      phone: known.phone || '', insta: known.insta || '',
+      photo: known.photo || me.photo || '', deviceId: known.deviceId,
+    });
+    return;
+  }
+  const p = getProfile();
+  if (!p) {
+    if (me.name) {
+      // Enough to skip the registration gate entirely.
+      saveProfile({ name: me.name, email: me.email, phone: '', insta: '', photo: me.photo || '' });
+      registerPlayer(getProfile());
+    }
+    return;
+  }
+  if ((p.email || '').toLowerCase() !== me.email) {
+    saveProfile({ ...p, email: me.email });
+    registerPlayer(getProfile());
+  }
+}
 
 function registerPlayer(profile) {
   store.savePlayer({
@@ -1618,6 +1745,7 @@ function renderHome() {
           <button class="btn btn-ghost" id="btn-players">${esc(t('playersBtn'))}</button>
           <button class="btn btn-ghost" id="btn-ledger">${esc(t('ledgerBtn'))}</button>
           <button class="btn btn-ghost" id="btn-log">${esc(t('logBtn'))}</button>
+          ${authReady() ? `<button class="btn btn-ghost" id="btn-execs">${esc(t('execsBtn'))}</button>` : ''}
           <button class="btn btn-ghost" id="btn-settings">${esc(t('clubSettings'))}</button>
           ${store.mode === 'demo' ? `<button class="btn btn-ghost" id="btn-reset-demo">${esc(t('resetDemo'))}</button>` : ''}
         </div>
@@ -1639,6 +1767,7 @@ function renderHome() {
   $('#btn-edit-profile')?.addEventListener('click', () => openProfileModal());
   $('#btn-contact')?.addEventListener('click', () => openContactModal());
   $('#btn-log')?.addEventListener('click', openLogModal);
+  $('#btn-execs')?.addEventListener('click', openExecsModal);
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
   $('#btn-players')?.addEventListener('click', openPlayersModal);
@@ -3870,6 +3999,74 @@ function openEventEditor(ev, { isNew = false } = {}) {
 /* Exec: club settings                                                 */
 /* ================================================================== */
 
+/*
+ * Who is an exec.
+ *
+ * The list lives in the club's settings and is the only thing that grants
+ * exec powers, so it is also the only thing worth protecting: once the
+ * database rules are tightened, nobody who is not already on it can change
+ * it. Two guards here are for the honest mistakes rather than the attacks —
+ * you cannot remove yourself, and you cannot empty the list, because either
+ * one locks the club out of its own app on a Saturday night.
+ */
+function openExecsModal() {
+  // Same normalising as isExec, for the same reason: this is what decides
+  // whether the "you cannot remove yourself" guard recognises you.
+  const me = (currentUser()?.email || '').trim().toLowerCase();
+  const ov = openModal(`
+    <div class="modal-body">
+      <h2 class="m0">${esc(t('execsTitle'))}</h2>
+      <p class="hint">${esc(t('execsHint'))}</p>
+      <div class="summary-list" id="ex-list"></div>
+      <label class="field-label" for="ex-new">${esc(t('execsAddLbl'))}</label>
+      <div class="row gap">
+        <input class="input grow" id="ex-new" type="email" inputmode="email"
+               placeholder="${esc(t('emailPh').replace(' *', ''))}">
+        <button class="btn btn-primary" id="ex-add">${esc(t('add'))}</button>
+      </div>
+      <button class="btn btn-ghost wide" data-close>${esc(t('close'))}</button>
+    </div>`, { wide: true });
+
+  async function save(list) {
+    await store.saveSettings({ execEmails: list });
+    logAction('execs', t('logExecs', { n: list.length, list: list.join(', ') }));
+  }
+
+  function paint() {
+    const list = execEmails();
+    $('#ex-list', ov).innerHTML = list.length ? list.map(email => `
+      <div class="entry">
+        <span class="grow entry-name"><span>${esc(email)}</span>${
+          email === me ? `<small>${esc(t('execsYou'))}</small>` : ''}</span>
+        ${email === me
+          ? `<span class="chip chip-muted">${esc(t('execsYouChip'))}</span>`
+          : `<button class="btn btn-tiny btn-danger-ghost" data-drop="${esc(email)}">\u2715</button>`}
+      </div>`).join('') : `<p class="hint">${esc(t('execsEmpty'))}</p>`;
+
+    $$('[data-drop]', ov).forEach(b => b.addEventListener('click', async () => {
+      const email = b.dataset.drop;
+      const left = execEmails().filter(x => x !== email);
+      if (!left.length) { toast(t('execsLastOne'), 'err'); return; }
+      if (!await confirmModal(t('execsDropAsk', { email }), t('remove'))) return;
+      await save(left);
+      toast(t('execsDropped', { email }));
+      paint();
+    }));
+  }
+
+  $('#ex-add', ov).addEventListener('click', async () => {
+    const email = $('#ex-new', ov).value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast(t('emailRequired'), 'err'); return; }
+    const list = execEmails();
+    if (list.includes(email)) { toast(t('execsAlready', { email }), 'warn'); return; }
+    await save([...list, email]);
+    $('#ex-new', ov).value = '';
+    toast(t('execsAdded', { email }));
+    paint();
+  });
+  paint();
+}
+
 function openSettingsModal() {
   const s = state.settings;
   const ov = openModal(`
@@ -3882,8 +4079,6 @@ function openSettingsModal() {
         <input class="input" id="cs-location" value="${esc(s.location || '')}">
         <label class="field-label">${esc(t('instaHandle'))}</label>
         <input class="input" id="cs-insta" value="${esc(s.instagram || '')}">
-        <label class="field-label">${esc(t('execPinLbl'))}</label>
-        <input class="input" id="cs-pin" value="${esc(s.execPin || '')}" maxlength="12">
         <label class="field-label">${esc(t('seasonEndLbl'))}</label>
         <input class="input" id="cs-season" type="date" value="${esc(s.seasonEnd || '')}">
         <label class="field-label">${esc(t('lateFeeLbl'))}</label>
@@ -3918,7 +4113,6 @@ function openSettingsModal() {
       etransferEmail: $('#cs-email', ov).value.trim(),
       location: $('#cs-location', ov).value.trim(),
       instagram: $('#cs-insta', ov).value.trim().replace(/^@/, ''),
-      execPin: $('#cs-pin', ov).value.trim() || '1405',
       seasonEnd: $('#cs-season', ov).value || s.seasonEnd || '',
       lateFeeNote: $('#cs-latefee', ov).value.trim(),
       lateFeeAmount: parseFloat($('#cs-latefeeamt', ov).value) || 0,
@@ -3956,6 +4150,13 @@ async function main() {
   // Everyone watches the player registry: Battle Pass status must be known
   // on every device for prices, chips, and reminder emails to be right.
   store.watchPlayers();
+  // The signed-in address is the one the app trusts from here on. Nobody
+  // can claim somebody else's, which is what makes the exec list mean
+  // anything and what stops one person becoming two accounts.
+  await initAuth(store.firebaseApp, (me) => {
+    if (me) adoptSignedInIdentity(me);
+    render();
+  });
   await store.init(newState => {
     state = newState;
     render();

@@ -310,6 +310,7 @@ function createDemoStore() {
 
   return {
     mode: 'demo',
+    firebaseApp: null,
     async init(cb) { onChange = cb; onChange(state); },
     watchEvent() {},
     unwatchEvent() {},
@@ -414,6 +415,9 @@ async function createFirebaseStore(config) {
 
   return {
     mode: 'live',
+    // The auth module attaches to this same app, so there is one project
+    // and one session rather than two that can disagree.
+    firebaseApp: app,
     async init(cb) {
       onChange = cb;
       fs.onSnapshot(fs.doc(db, 'config', 'main'), snap => {

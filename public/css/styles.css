@@ -530,3 +530,11 @@ select.input { appearance: auto; }
 .contact-row { margin-top: 6px; }
 .ee-bulk { margin-top: 10px; }
 .log-row .log-kind { min-width: 22px; font-weight: 700; }
+
+/* ------- signing in ------- */
+.si-or {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--ink-soft); font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+}
+.si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.chip-exec-tag { background: var(--line-strong); color: var(--card); font-weight: 700; }
