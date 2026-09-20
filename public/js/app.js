@@ -1101,6 +1101,8 @@ async function logRemoval(ev, su, by) {
  * It records the profile on that device and says so plainly. That is enough
  * to answer "who marked this paid?" and honest about what it is worth.
  */
+let logWarned = false;
+
 async function logAction(kind, what, extra = {}) {
   try {
     const me = getProfile();
@@ -1114,8 +1116,13 @@ async function logAction(kind, what, extra = {}) {
       ...extra,
     });
   } catch (err) {
-    // Never let the record-keeping stop the thing being recorded.
+    // Never let the record-keeping stop the thing being recorded — the
+    // payment matters more than the note about it. But say so once, because
+    // a history that silently records nothing is worse than none at all:
+    // this is what a database that has not had the new rules published yet
+    // looks like from in here.
     console.error('log', err);
+    if (!logWarned) { logWarned = true; toast(t('logBlocked'), 'warn'); }
   }
 }
 

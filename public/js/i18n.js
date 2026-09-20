@@ -167,6 +167,8 @@ const STRINGS = {
   // Club settings an exec can now reach without a code change.
   // Who did what. The PIN is shared, so this names the device's profile and
   // says so \u2014 enough to answer "who marked this paid?", honest about its limits.
+  logBlocked: ['That went through, but the exec history could not be saved \u2014 publish the updated database rules in Firebase.',
+               'C\u2019est pass\u00e9, mais l\u2019historique des execs n\u2019a pas pu \u00eatre enregistr\u00e9 \u2014 publiez les r\u00e8gles mises \u00e0 jour dans Firebase.'],
   logBtn: ['Exec history', 'Historique des execs'],
   logTitle: ['What the execs did', 'Ce que les execs ont fait'],
   logHint: ['Payments, passes, grades and deleted accounts, newest first. The exec PIN is shared, so this names the profile on the device that did it.',
