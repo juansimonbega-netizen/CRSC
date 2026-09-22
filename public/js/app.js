@@ -111,6 +111,51 @@ function openModal(html, { wide = false } = {}) {
   return overlay;
 }
 
+/*
+ * A sheet that keeps up with the database.
+ *
+ * openModal paints once. That is fine for a confirmation, and wrong for
+ * anything showing money: two execs on the door would open the Payments
+ * screen, one would mark somebody paid, and the other would go on looking
+ * at a page that said otherwise. Same club, two different answers.
+ *
+ * These rebuild themselves whenever a change arrives. Two things are
+ * protected while that happens: whatever somebody is typing or has picked
+ * (a rebuild that wiped a half-filled amount would be its own bug), and
+ * where they have scrolled to.
+ */
+const liveModals = new Set();
+let rebuilding = false;
+
+function liveModal(build, opts = {}) {
+  const ov = openModal('', opts);
+  const entry = { ov, build };
+  liveModals.add(entry);
+  build(ov);
+  return ov;
+}
+
+function refreshLiveModals() {
+  if (rebuilding) return;
+  rebuilding = true;
+  try {
+    for (const entry of [...liveModals]) {
+      if (!entry.ov.isConnected) { liveModals.delete(entry); continue; }
+      // Never pull the page out from under somebody mid-action.
+      if (entry.ov.contains(document.activeElement)
+          && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) continue;
+      const scrolls = $$('.summary-list', entry.ov).map(el => el.scrollTop);
+      const top = entry.ov.querySelector('.modal')?.scrollTop || 0;
+      entry.build(entry.ov);
+      $$('.summary-list', entry.ov).forEach((el, i) => { el.scrollTop = scrolls[i] || 0; });
+      const m = entry.ov.querySelector('.modal');
+      if (m) m.scrollTop = top;
+    }
+  } finally {
+    rebuilding = false;
+  }
+}
+
 /* `alert: true` states something rather than asking it — one button, no
  * destructive option to tap by accident. */
 function confirmModal(message, confirmLabel, { alert = false } = {}) {
@@ -1392,6 +1437,7 @@ function route() {
 function render() {
   totalsCache = {};
   playerIndex = null;
+  refreshLiveModals();
   const r = route();
   renderHeader();
   if (r.view === 'adopt') { adoptIdentity(r.payload); return; }
@@ -2648,6 +2694,13 @@ function openPinModal() {
 /* ================================================================== */
 
 function openPlayerAdminModal(ev, su) {
+  // Live, like the Payments screen: two execs can be looking at the same
+  // person, and the one who did not tap must still see what happened.
+  return liveModal(ov => paintPlayerAdmin(ov, ev,
+    eventSignups(ev.id).find(x => x.id === su.id) || su));
+}
+
+function paintPlayerAdmin(ov, ev, su) {
   const curList = listById(ev, su.listId);
   // A pass already covers this spot, so there is no money to take for it.
   const coveredHere = coveredSignupIds(ev).has(su.id);
@@ -2656,7 +2709,7 @@ function openPlayerAdminModal(ev, su) {
     return `<option value="${esc(l.id)}" ${l.id === su.listId ? 'selected' : ''}>${esc(sess ? sess.label : '')} · ${esc(SPORTS[l.sport]?.label || '')} ${esc(l.label)}</option>`;
   }).join('');
   const teamCount = curList?.teamCount || 0;
-  const ov = openModal(`
+  ov.querySelector('.modal').innerHTML = `
     <div class="modal-body">
       <div class="row gap center">
         ${avatarHtml(su)}
@@ -2715,7 +2768,8 @@ function openPlayerAdminModal(ev, su) {
         <button class="btn btn-danger grow" id="pa-remove">${esc(t('remove'))}</button>
       </div>
       <button class="btn btn-ghost wide" data-close>${esc(t('done'))}</button>
-    </div>`);
+    </div>`;
+  $$('[data-close]', ov).forEach(b => b.addEventListener('click', () => ov.remove()));
 
   /*
    * Paid / checked-in as checkboxes with traffic-light colors:
@@ -3619,13 +3673,19 @@ function suggestMatch(pay, unpaid) {
 }
 
 function openSummaryModal(ev) {
+  // Rebuilt from scratch on every change, so two execs on the door are
+  // never looking at two different answers.
+  return liveModal(ov => paintSummary(ov, ev), { wide: true });
+}
+
+function paintSummary(ov, ev) {
   const people = personTotals(ev);
   const paid = people.filter(p => p.paid);
   const unpaid = people.filter(p => !p.paid);
   const collected = people.reduce((a, p) => a + (p.paidAmount || 0), 0);
   const outstanding = unpaid.reduce((a, p) => a + p.total, 0);
   const pays = (state.payments || []).filter(p => !p.matched && !isTestTransfer(p, state.settings));
-  const ov = openModal(`
+  ov.querySelector('.modal').innerHTML = `
     <div class="modal-body">
       <h2>${esc(t('paymentsTitle', { date: fmtDate(ev.date) }))}</h2>
       <div class="stat-row">
@@ -3726,7 +3786,8 @@ function openSummaryModal(ev) {
           ${paid.map(p => `<div class="entry"><span class="grow">${esc(p.name)}</span>${p.pass && !p.paidAmount ? passChipHtml(p.pass) : `<span class="chip chip-paid">${fmtMoney(p.paidAmount || 0)} ✓</span>`}</div>`).join('')}
         </div>` : ''}
       <button class="btn btn-primary wide" data-close>${esc(t('close'))}</button>
-    </div>`, { wide: true });
+    </div>`;
+  $$('[data-close]', ov).forEach(b => b.addEventListener('click', () => ov.remove()));
 
   $$('.pay-match', ov).forEach(row => {
     const pay = pays.find(p => p.id === row.dataset.pay);
@@ -3745,8 +3806,6 @@ function openSummaryModal(ev) {
       }));
       await notifyPaymentReceived(ev, [person], pay);
       toast(t('matchedToast', { name, amount: fmtMoney(pay.amount || 0) }));
-      ov.remove();
-      openSummaryModal(state.events.find(e => e.id === ev.id) || ev);
     });
     $('[data-match-x]', row).addEventListener('click', async () => {
       await store.updatePayment(pay.id, { matched: true, matchedTo: '' });
@@ -3775,8 +3834,6 @@ function openSummaryModal(ev) {
         .map(su => store.updateSignup(ev.id, su.id, { paid: false, paidVia: '' }))));
       await store.updatePayment(pay.id, { matched: false, matchedTo: '', auto: false, noAuto: true });
       toast(t('autoUndone', { names: pay.matchedTo || '' }), 'warn');
-      ov.remove();
-      openSummaryModal(state.events.find(e => e.id === ev.id) || ev);
     });
   });
 }
