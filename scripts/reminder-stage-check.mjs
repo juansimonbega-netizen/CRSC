@@ -8,6 +8,18 @@
  * skipped rather than arriving late and useless.
  */
 import { reminderStage } from '../public/js/notify.js';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+// The Gmail script sends these now, so it has to agree with the app about
+// when each one is due. Two schedules that disagree would chase people
+// twice, or not at all.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ctx = { MailApp: { sendEmail() {} }, UrlFetchApp: {}, GmailApp: {}, console, Date };
+vm.createContext(ctx);
+vm.runInContext(readFileSync(join(ROOT, 'apps-script/payment-matcher.gs'), 'utf8'), ctx);
 
 const ev = { date: '2026-11-07', status: 'open' };      // a Saturday, games at 17:00
 const at = (iso) => new Date(iso);
@@ -29,15 +41,24 @@ const cases = [
 let bad = 0;
 for (const [when, want, why] of cases) {
   const got = reminderStage(ev, at(when));
-  const ok = got === want;
+  // The .gs reads the clock rather than taking a time, so pin the clock.
+  ctx.Date = class extends Date {
+    constructor(...a) { super(...(a.length ? a : [when])); }
+    static now() { return new Date(when).getTime(); }
+  };
+  const gs = ctx.reminderStage(ev.date) || null;
+  const ok = got === want && gs === want;
   if (!ok) bad++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${when}  → ${String(got).padEnd(6)} ${ok ? '' : '(wanted ' + want + ') '}${why}`);
+  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${when}  → app=${String(got).padEnd(6)} gs=${String(gs).padEnd(6)}`
+    + `${ok ? '' : '(wanted ' + want + ') '}${why}`);
 }
+ctx.Date = Date;
 
 // A closed Saturday never chases anybody.
 const closed = reminderStage({ date: '2026-11-07', status: 'closed' }, at('2026-11-06T18:00:00'));
 console.log(`${closed === null ? 'ok  ' : 'FAIL'}  sign-ups closed          → ${closed}`);
 if (closed !== null) bad++;
 
-console.log('\n' + (bad ? `FAILED — ${bad} wrong` : 'every reminder fires in its own window, most urgent only'));
+console.log('\n' + (bad ? `FAILED — ${bad} wrong`
+  : 'app and Gmail script agree on every reminder, most urgent only'));
 process.exit(bad ? 1 : 0);

@@ -33,7 +33,8 @@ var API_KEY = 'AIzaSyB7tE4RwcQgmAIIxdyISjQwbamEDmts_hQ';
 // settings in the database, so changing a price in the app changes it here
 // too — they used to be written down twice and could drift apart silently.
 // The numbers below are only the fallback if the settings cannot be read.
-var FALLBACK = { testAmount: 1, passPrice4h: 135, passPrice2h: 75 };
+var FALLBACK = { testAmount: 1, passPrice4h: 135, passPrice2h: 75,
+                 etransferEmail: '', clubFullName: 'CRSC', lateFeeNote: '', lateFeeAmount: 5 };
 
 function clubSettings() {
   try {
@@ -44,7 +45,13 @@ function clubSettings() {
       var v = val(doc, k);
       return (v === null || v === undefined || v === '') ? FALLBACK[k] : Number(v);
     };
-    return { testAmount: n('testAmount'), passPrice4h: n('passPrice4h'), passPrice2h: n('passPrice2h') };
+    return {
+      testAmount: n('testAmount'), passPrice4h: n('passPrice4h'), passPrice2h: n('passPrice2h'),
+      etransferEmail: val(doc, 'etransferEmail') || '',
+      clubFullName: val(doc, 'clubFullName') || 'CRSC',
+      lateFeeNote: val(doc, 'lateFeeNote') || '',
+      lateFeeAmount: Number(val(doc, 'lateFeeAmount')) || 0,
+    };
   } catch (e) {
     return FALLBACK;
   }
@@ -78,6 +85,123 @@ function checkTransfers() {
   // Filing the transfers is only half the job — settle the ones that are
   // unambiguous right now, so nobody has to open the app for it to happen.
   settleTransfers();
+  // And chase the people who have not paid. This used to run inside the app,
+  // which meant a Friday with nobody opening it was a Friday with no
+  // reminders. It belongs next to the thing that already runs unattended.
+  sendReminders();
+}
+
+/* ====================================================================
+ * Payment reminders
+ *
+ * Three of them: three nights before the game, the night before, and on the
+ * day. Only the most urgent one that applies is sent, and each at most once
+ * — somebody who first shows up in the list on Saturday morning gets "you
+ * play today" rather than all three at once.
+ *
+ * Everything needed is in the `dues` record the app publishes: who owes,
+ * how much, their address and their language. What has already gone out is
+ * kept in `reminders/{eventId}`, so this is the only thing that sends and
+ * nobody can be chased twice by two different machines.
+ * ==================================================================== */
+
+function sendReminders() {
+  var cfg = clubSettings();
+  listDocs('dues').forEach(function (night) {
+    var eventId = night.name.split('/').pop();
+    var date = val(night, 'date');
+    var stage = reminderStage(date);
+    if (!stage) return;
+
+    var people = (val(night, 'people') || []).filter(function (p) {
+      return p.email && Number(p.owed) > 0;
+    });
+    if (!people.length) return;
+
+    var sentDoc = getDoc('reminders/' + eventId);
+    var sent = (sentDoc && val(sentDoc, stage)) || [];
+    var fresh = people.filter(function (p) { return sent.indexOf(p.email) < 0; });
+    if (!fresh.length) return;
+
+    fresh.forEach(function (p) {
+      try {
+        reminderMail(p, date, stage, val(night, 'location') || '', cfg);
+        sent.push(p.email);
+      } catch (e) { /* one bad address must not stop the rest */ }
+    });
+    var fields = {};
+    fields[stage] = strList(sent);
+    fields.date = str(date);
+    patch('reminders/' + eventId, fields, [stage, 'date']);
+  });
+}
+
+/*
+ * Which reminder is due for a Saturday, counted in nights rather than hours
+ * because that is how the email reads: Friday lunchtime is "tomorrow" to a
+ * person and twenty-nine hours to a clock. Mirrors reminderStage() in
+ * public/js/notify.js.
+ */
+function reminderStage(date) {
+  if (!date) return '';
+  var parts = date.split('-');
+  var start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 17, 0, 0);
+  var now = new Date();
+  if (now > start) return '';                       // the game has started
+  var a = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  var b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  var days = Math.round((a - b) / 86400000);
+  if (days === 0) return 'soon';
+  if (days === 1) return 'day';
+  if (days === 2 || days === 3) return 'three';
+  return '';
+}
+
+function lateFeeLine(cfg, fr) {
+  if (cfg.lateFeeNote) return cfg.lateFeeNote;
+  if (!cfg.lateFeeAmount) return '';
+  return fr ? 'À noter : un paiement après l’événement coûte ' + cfg.lateFeeAmount + '$ de plus.'
+            : 'Heads up: payment after the event costs an extra ' + cfg.lateFeeAmount + '$.';
+}
+
+function reminderMail(p, date, stage, location, cfg) {
+  var fr = p.lang === 'fr';
+  var owed = Number(p.owed) + '$';
+  var club = cfg.clubFullName || 'CRSC';
+  var pay = fr
+    ? 'Virez ' + owed + ' à ' + cfg.etransferEmail + ' en mentionnant votre nom, ou payez comptant sur place.'
+    : 'E-transfer ' + owed + ' to ' + cfg.etransferEmail + ' with your name in the message, or pay cash at the door.';
+  var late = lateFeeLine(cfg, fr);
+  var where = location ? ((fr ? 'Où : ' : 'Where: ') + location + '\n\n') : '';
+  var subject, open, tail;
+
+  if (stage === 'three') {
+    subject = fr ? 'CRSC — Le ' + date + ' approche' : 'CRSC — ' + date + ' is coming up';
+    open = fr ? 'Vous êtes sur la liste pour le ' + date + ' et il reste ' + owed + ' à payer.'
+              : 'You\'re on the list for ' + date + ' and ' + owed + ' is still to pay.';
+    tail = fr ? 'Finalement vous ne pouvez pas venir? Retirez votre nom sur la page d\'inscription pour qu\'une personne de la liste d\'attente puisse jouer.'
+              : 'Can\'t make it after all? Take your name off on the sign-up page so somebody on the waitlist can play.';
+  } else if (stage === 'day') {
+    subject = fr ? 'CRSC — Vous jouez demain (' + date + ')' : 'CRSC — You play tomorrow (' + date + ')';
+    open = fr ? 'Vous jouez demain, le ' + date + ', et ' + owed + ' reste à payer.'
+              : 'You play tomorrow, ' + date + ', and ' + owed + ' is still unpaid.';
+    tail = fr ? 'Déjà payé? Ignorez ce message — un exec le confirmera sous peu.'
+              : 'Already paid? Ignore this — an exec will confirm it shortly.';
+  } else {
+    subject = fr ? 'CRSC — Vous jouez aujourd\'hui : ' + owed + ' à régler'
+                 : 'CRSC — You play today: ' + owed + ' to settle';
+    open = fr ? 'Vous jouez ce soir et ' + owed + ' reste à payer.'
+              : 'You play tonight and ' + owed + ' is still unpaid.';
+    tail = fr ? 'En arrivant au gymnase, ouvrez la page d\'inscription et touchez « Je suis là ».'
+              : 'When you get to the gym, open the sign-up page and tap "I\'m here" to check in.';
+  }
+
+  MailApp.sendEmail({
+    to: p.email,
+    subject: subject,
+    body: (fr ? 'Salut ' : 'Hey ') + p.name + '!\n\n' + open + '\n\n' + pay +
+          (late ? '\n\n' + late : '') + '\n\n' + where + tail + '\n\n— ' + club,
+  });
 }
 
 /*
@@ -324,6 +448,16 @@ function str(v) { return { stringValue: String(v) }; }
 function int(v) { return { integerValue: String(v) }; }
 function bool(v) { return { booleanValue: !!v }; }
 function dbl(v) { return { doubleValue: Number(v) || 0 }; }
+function strList(arr) {
+  return { arrayValue: { values: (arr || []).map(function (x) { return { stringValue: String(x) }; }) } };
+}
+
+/* One document, or null when it is not there yet. */
+function getDoc(path) {
+  var res = UrlFetchApp.fetch(fsUrl(path), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return null;
+  try { return JSON.parse(res.getContentText() || '{}'); } catch (e) { return null; }
+}
 
 /* Firestore's typed JSON back into plain values. */
 function val(doc, field) {

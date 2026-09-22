@@ -104,6 +104,15 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // Which reminders have already gone out for a night, kept by the Gmail
+    // script so it is the only thing that sends and nobody is chased twice.
+    match /reminders/{eventId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.date is string
+        && request.resource.data.date.size() <= 20;
+      allow delete: if true;
+    }
+
     match /events/{eventId} {
       allow read: if true;
       allow write: if true;

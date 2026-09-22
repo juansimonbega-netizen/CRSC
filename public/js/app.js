@@ -2,7 +2,7 @@ import {
   createStore, SPORTS, LEVELS, levelByRank, listLevel, uid, deviceId, setDeviceId, makeTemplateEvent, nextSaturday, saturdaysUntil, localISO,
 } from './store.js';
 import { t, tLang, getLang, setLang, locale } from './i18n.js';
-import { promotionCandidate, sendMail, mailerConfigured, reminderStage } from './notify.js';
+import { promotionCandidate, sendMail, mailerConfigured } from './notify.js';
 import { resolvePayment, nameHits, passPurchase, isTestTransfer, normalize } from './automatch.js';
 import { initAuth, currentUser, signInWithGoogle, sendEmailLink, signOutNow, authReady } from './auth.js';
 
@@ -1032,8 +1032,6 @@ async function notifyPassActivated(player, type, amount) {
  * whenever anyone has the app open inside the reminder window; each person's
  * signups are flagged (claim-first) so nobody is emailed twice.
  */
-let remindersRunning = false;
-let remindersSimulated = false;
 /*
  * The late-fee sentence. The club's own note if they wrote one, otherwise a
  * plain statement of the policy built from the amount — people should never
@@ -1044,70 +1042,6 @@ function lateFeeLine(lang) {
   if (note) return note;
   const amt = parseFloat(state.settings.lateFeeAmount);
   return amt ? tLang(lang, 'lateFeePolicy', { amount: fmtMoney(amt) }) : '';
-}
-
-async function runPaymentReminders() {
-  if (remindersRunning) return;
-  remindersRunning = true;
-  try {
-    const live = store.mode !== 'demo' && mailerConfigured();
-    let sent = 0;
-    for (const ev of state.events) {
-      const stage = reminderStage(ev);
-      if (!stage) continue;
-      // Which flag on the sign-up says this particular reminder has gone.
-      const mark = { three: 'rem3dAt', day: 'rem1dAt', soon: 'remSoonAt' }[stage];
-      store.watchEvent(ev.id);
-      const signups = state.signups[ev.id];
-      if (!signups) continue; // not loaded yet; a later pass will handle it
-      // one reminder per person, bundle-aware total
-      const covered = coveredSignupIds(ev);
-      const persons = {};
-      for (const su of signups) {
-        if (su.paid || covered.has(su.id) || !su.email || su[mark]) continue;
-        const k = personKey(su);
-        (persons[k] = persons[k] || []).push(su);
-      }
-      for (const sus of Object.values(persons)) {
-        const su = sus[0];
-        const lang = su.lang === 'fr' ? 'fr' : 'en';
-        const { total } = computePrice(ev, sus.map(x => x.listId), su.method, playerPass(su, ev.date));
-        if (total === 0) continue;
-        if (live) {
-          // claim before sending so a second open tab can't double-send
-          await Promise.all(sus.map(x => store.updateSignup(ev.id, x.id, { [mark]: Date.now() })));
-          try {
-            await sendMail({
-              to: su.email,
-              subject: tLang(lang, 'emailRemSubject_' + stage, { date: fmtDateLang(ev.date, lang) }),
-              message: tLang(lang, 'emailRemBody_' + stage, {
-                name: su.name,
-                date: fmtDateLang(ev.date, lang),
-                total: fmtMoney(total),
-                payLine: payLineFor(lang, su.method, total),
-                late: lateFeeLine(lang),
-                location: ev.location || state.settings.location || '',
-                club: state.settings.clubFullName || 'CRSC',
-              }),
-            });
-            sent++;
-          } catch (err) {
-            console.error('reminder email', err);
-          }
-        } else if (isExec() && !remindersSimulated) {
-          // Demo mode: count only. Writing a flag per person would mean a
-          // store write and a re-render for every unpaid player.
-          sent++;
-        }
-      }
-    }
-    if (sent) {
-      if (!live) remindersSimulated = true;
-      toast(t(live ? 'remindersSent' : 'remindersSim', { n: sent }));
-    }
-  } finally {
-    remindersRunning = false;
-  }
 }
 
 /* ================================================================== */
@@ -1833,7 +1767,13 @@ function renderHome() {
       </div>` : ''}
 
     <h2 class="section-title">${esc(t('chooseSaturday'))}</h2>
-    <p class="hint">${esc(t('calendarHint', { end: fmtDate(s.seasonEnd || '') }))} ${esc(t('weeklyRule'))}</p>
+    <p class="hint">${(() => {
+      // From the Saturdays that exist, not from the season-end setting: the
+      // setting is a target for creating weeks, and it drifts. It said
+      // "until December 26" while the calendar ran to May.
+      const last = [...state.events].map(e => e.date).filter(Boolean).sort().pop();
+      return esc(t('calendarHint', { end: fmtDate(last || s.seasonEnd || '') }));
+    })()} ${esc(t('weeklyRule'))}</p>
     ${upcoming.length
       ? renderCalendar()
       : `<div class="empty">${t('noEvents', { insta: `<a href="https://instagram.com/${esc(s.instagram || '')}" target="_blank" rel="noopener">@${esc(s.instagram || '')}</a>` })}</div>`}
@@ -1895,21 +1835,56 @@ function renderHome() {
 }
 
 /* Create an event for every remaining Saturday until seasonEnd. */
+/*
+ * Create the Saturdays that are missing — but let an exec say which.
+ *
+ * It used to make every Saturday up to the season end, and the club's year
+ * is not one unbroken run: there is a month between the fall and the winter,
+ * and weeks off inside each. Making them all and deleting the extras by hand
+ * is how October 17 and November 28 came to exist in the first place.
+ */
 async function openSeason() {
   const end = state.settings.seasonEnd || nextSaturday(12);
   const have = new Set(state.events.map(e => e.date));
   const missing = saturdaysUntil(end).filter(d => !have.has(d));
   if (!missing.length) { toast(t('seasonComplete', { end: fmtDate(end) })); return; }
-  if (!await confirmModal(t('openSeasonConfirm', { end: fmtDate(end), n: missing.length }), t('openSeason'))) return;
+
+  const picked = await new Promise(resolve => {
+    const ov = openModal(`
+      <div class="modal-body">
+        <h2 class="m0">${esc(t('openSeason'))}</h2>
+        <p class="hint">${esc(t('openSeasonPick', { end: fmtDate(end) }))}</p>
+        <div class="summary-list">
+          ${missing.map(d => `
+            <label class="pay-opt">
+              <input type="checkbox" data-day="${esc(d)}" checked>
+              <span>${esc(fmtDate(d))}</span>
+            </label>`).join('')}
+        </div>
+        <div class="row gap">
+          <button class="btn btn-ghost grow" data-close>${esc(t('cancel'))}</button>
+          <button class="btn btn-primary grow" id="os-go">${esc(t('createThem'))}</button>
+        </div>
+      </div>`, { wide: true });
+    $('#os-go', ov).addEventListener('click', () => {
+      const days = $$('[data-day]:checked', ov).map(c => c.dataset.day);
+      ov.remove();
+      resolve(days);
+    });
+    ov.addEventListener('click', e => { if (e.target === ov) resolve(null); });
+    $$('[data-close]', ov).forEach(b => b.addEventListener('click', () => resolve(null)));
+  });
+  if (!picked || !picked.length) return;
+
   const src = [...state.events].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
-  for (const date of missing) {
+  for (const date of picked) {
     const copy = src
       ? { ...JSON.parse(JSON.stringify(src)), id: uid('ev'), date, status: 'open', createdAt: Date.now() }
       : makeTemplateEvent(date, 'Saturday Drop-in');
     copy.lists = copy.lists.map(l => ({ ...l, id: uid('l') }));
     await store.saveEvent(copy);
   }
-  toast(t('seasonOpened', { n: missing.length }));
+  toast(t('seasonOpened', { n: picked.length }));
 }
 
 /* ================================================================== */
@@ -2149,6 +2124,7 @@ function renderEvent(ev) {
           <button class="btn btn-small btn-ghost" id="btn-csv">${esc(t('exportCsv'))}</button>
           <button class="btn btn-small btn-ghost" id="btn-toggle-open">${esc(isOpen ? t('closeSignups') : t('reopenSignups'))}</button>
           <button class="btn btn-small btn-ghost" id="btn-find">${esc(t('findPlayer'))}</button>
+          ${!isPastEvent(ev) ? `<button class="btn btn-small btn-danger" id="btn-delete-event">${esc(t('deleteThisSaturday'))}</button>` : ''}
         </div>` : ''}
     </div>
     ${sessionsHtml}
@@ -2234,6 +2210,17 @@ function renderEvent(ev) {
       toast(t('openedNow'));
     });
     $('#btn-edit-event')?.addEventListener('click', () => openEventEditor(ev));
+    $('#btn-delete-event')?.addEventListener('click', async () => {
+      const n = eventSignups(ev.id).filter(su => !su.viaPass).length;
+      const held = eventSignups(ev.id).length - n;
+      if (!await confirmModal(t('deleteSaturdayAsk', {
+        date: fmtDate(ev.date), n, held,
+      }), t('deleteEvent'))) return;
+      await store.deleteEvent(ev.id);
+      logAction('event', t('logEventDeleted', { date: fmtDateShort(ev.date), n }));
+      toast(t('eventDeleted'));
+      location.hash = '#/';
+    });
     $('#btn-summary')?.addEventListener('click', () => openSummaryModal(ev));
     $('#btn-csv')?.addEventListener('click', () => exportCsv(ev));
     $('#btn-toggle-open')?.addEventListener('click', async () => {
@@ -3682,7 +3669,12 @@ async function publishDues(ev) {
       lang: p.signups[0]?.lang === 'fr' ? 'fr' : 'en',
     }));
   try {
-    await store.saveDues(ev.id, { date: ev.date, updatedAt: Date.now(), people });
+    await store.saveDues(ev.id, {
+      date: ev.date, updatedAt: Date.now(), people,
+      // The Gmail script sends the reminders now, and a reminder that does
+      // not say where the gym is has wasted its one chance.
+      location: ev.location || state.settings.location || '',
+    });
   } catch (err) { console.error('publish dues', err); }
 }
 
@@ -4397,7 +4389,6 @@ function openSettingsModal() {
 /* Boot                                                                */
 /* ================================================================== */
 
-let reminderTimer = null;
 let matchTimer = null;
 
 async function main() {
@@ -4422,9 +4413,6 @@ async function main() {
   await store.init(newState => {
     state = newState;
     render();
-    // Check for due payment reminders shortly after data settles.
-    clearTimeout(reminderTimer);
-    reminderTimer = setTimeout(runPaymentReminders, 1500);
     // Received e-transfers land here the moment the Gmail script files them.
     clearTimeout(matchTimer);
     matchTimer = setTimeout(runAutoMatch, 1200);
