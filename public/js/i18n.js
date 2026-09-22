@@ -127,6 +127,8 @@ const STRINGS = {
                         'Lib\u00e9rer votre place r\u00e9serv\u00e9e sur {list} pour ce samedi? Vous gardez votre passe de saison et la place sera r\u00e9serv\u00e9e de nouveau la semaine prochaine.'],
   cantMakeHeldDone: ['Thanks for telling us \u2014 somebody else can play. Your pass is untouched.',
                      'Merci de nous avoir pr\u00e9venus \u2014 quelqu\u2019un d\u2019autre pourra jouer. Votre passe reste intacte.'],
+  passSeatDropped: ['{n} held spot(s) removed \u2014 the pass no longer holds that list.',
+                    '{n} place(s) r\u00e9serv\u00e9e(s) retir\u00e9e(s) \u2014 la passe ne couvre plus cette liste.'],
   passUntilLbl: ['Pass valid until', 'Passe valide jusqu\u2019au'],
   passUntilHint: ['The last Saturday this pass holds a spot and covers volleyball. Leave it on the season end unless they paid for something shorter.',
                   'Le dernier samedi o\u00f9 cette passe r\u00e9serve une place et couvre le volleyball. Laissez la fin de saison, sauf s\u2019ils ont pay\u00e9 pour plus court.'],

@@ -534,6 +534,40 @@ async function seatPassHolders(ev) {
       const id = identityOf(player);
       if (!holders[id] || passLists(holders[id]).length < passLists(player).length) holders[id] = player;
     }
+    /*
+     * Seats the pass no longer holds, worked out BEFORE anything is added.
+     *
+     * Moving somebody's held spot from one list to another used to leave the
+     * old seat standing, so they were on two lists at 5:30 — the exact thing
+     * the rest of the app exists to prevent. The order matters as much as
+     * the rule: while the old seat is still on the roster it counts as
+     * "already playing at 5:30", so deciding the drop afterwards would take
+     * the football seat away and never put the basketball one down.
+     *
+     * Only untouched seats go. One an exec has marked paid, or that somebody
+     * has checked in on, is a fact about that night rather than a standing
+     * reservation, and the club can take that name off by hand if it should.
+     */
+    const drop = [];
+    for (const su of eventSignups(ev.id)) {
+      if (!su.viaPass || su.paid || su.checkedIn || su.amountPaid) continue;
+      const holder = holders[identityOf(su)];
+      const list = listById(ev, su.listId);
+      if (!list) continue;
+      const stillHeld = holder && !(holder.passUntil && ev.date > holder.passUntil)
+        && passLists(holder).some(w =>
+          w.sport === list.sport && w.sessionId === list.sessionId && w.label === list.label);
+      if (!stillHeld) drop.push(su);
+    }
+    const dropping = new Set(drop.map(su => su.id));
+    for (const su of drop) {
+      // Straight out, not through removeSignup: a standing reservation the
+      // club withdrew is not the player walking away from a game, and
+      // filing it in the proof trail would say it was.
+      await store.deleteSignup(ev.id, su.id);
+    }
+    if (drop.length) toast(t('passSeatDropped', { n: drop.length }), 'warn');
+
     const adds = [];
     // Slots claimed so far, counting the ones this run is about to add.
     const claimed = {};
@@ -545,7 +579,12 @@ async function seatPassHolders(ev) {
         if (!list) continue;
         const key = id + '|' + list.sessionId;
         if (claimed[key]) continue;
-        if (identitiesInSession(ev, list.sessionId).has(id)) continue;  // already playing then
+        // Already playing then — but a seat this run just withdrew does not
+        // count, or moving a held spot could never put the new one down.
+        const here = eventSignups(ev.id).some(su => !dropping.has(su.id)
+          && listById(ev, su.listId)?.sessionId === list.sessionId
+          && identityOf(su) === id);
+        if (here) continue;
         if (removed.has(id + '|' + list.id)) continue;                  // taken off on purpose
         claimed[key] = true;
         adds.push({
