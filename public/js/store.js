@@ -20,6 +20,7 @@
  *   store.savePlayer(player)    -> create or merge (player.deviceId required)
  *   store.deletePlayer(deviceId)
  *   store.addLog(entry) / store.watchLog()   -> who did what, append-only
+ *   store.addRefund(record) / store.updateRefund(id, patch) / store.watchRefunds()
  *
  * state = { settings, events: [...], signups: { [eventId]: [...] } }
  */
@@ -401,6 +402,17 @@ function createDemoStore() {
       persist();
     },
     watchLog() {},
+    async addRefund(record) {
+      state.refunds = state.refunds || [];
+      state.refunds.push(record);
+      persist();
+    },
+    async updateRefund(id, patch) {
+      const r = (state.refunds || []).find(x => x.id === id);
+      if (r) Object.assign(r, patch);
+      persist();
+    },
+    watchRefunds() {},
     resetDemo() {
       state = demoSeed();
       persist();
@@ -426,6 +438,7 @@ async function createFirebaseStore(config) {
   let paymentsWatcher = null;
   let removalsWatcher = null;
   let logWatcher = null;
+  let refundsWatcher = null;
 
   function emit() { onChange(state); }
 
@@ -546,6 +559,20 @@ async function createFirebaseStore(config) {
       const { id, ...data } = entry;
       await fs.setDoc(fs.doc(db, 'log', id), data);
     },
+    async addRefund(record) {
+      const { id, ...data } = record;
+      await fs.setDoc(fs.doc(db, 'refunds', id), data);
+    },
+    async updateRefund(id, patch) {
+      await fs.setDoc(fs.doc(db, 'refunds', id), patch, { merge: true });
+    },
+    watchRefunds() {
+      if (refundsWatcher) return;
+      refundsWatcher = fs.onSnapshot(fs.collection(db, 'refunds'), snap => {
+        state.refunds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        emit();
+      }, err => console.error('refunds listener', err));
+    },
     watchLog() {
       if (logWatcher) return;
       logWatcher = fs.onSnapshot(fs.query(fs.collection(db, 'log'),
@@ -577,7 +604,7 @@ async function createArtifactDbStore() {
   const state = { settings: { ...DEFAULT_SETTINGS }, events: [], signups: {}, players: {}, payments: [], removals: [] };
   let onChange = () => {};
   const eventWatchers = {};
-  let playersWatcher = null, paymentsWatcher = null, removalsWatcher = null, logWatcher = null;
+  let playersWatcher = null, paymentsWatcher = null, removalsWatcher = null, logWatcher = null, refundsWatcher = null;
   const emit = () => onChange(state);
   const onErr = where => e => console.error('db ' + where, e);
 
@@ -697,6 +724,20 @@ async function createArtifactDbStore() {
     async addLog(entry) {
       const { id, ...data } = entry;
       await db.doc('log/' + id).set(data);
+    },
+    async addRefund(record) {
+      const { id, ...data } = record;
+      await db.doc('refunds/' + id).set(data);
+    },
+    async updateRefund(id, patch) {
+      await mergeWrite(db.doc('refunds/' + id), patch);
+    },
+    watchRefunds() {
+      if (refundsWatcher) return;
+      refundsWatcher = db.collection('refunds').onSnapshot(snap => {
+        state.refunds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        emit();
+      }, err => console.error('refunds listener', err));
     },
     watchLog() {
       if (logWatcher) return;

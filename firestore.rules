@@ -89,6 +89,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Refund requests: somebody who paid, then could not come, gave up their
+    // spot and is owed their money back. Unlike the logs this one can be
+    // updated, because an exec has to be able to mark it dealt with — and a
+    // refund nobody can close is a list that grows for ever.
+    match /refunds/{refundId} {
+      allow read: if true;
+      allow create, update: if
+        request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && (!('email' in request.resource.data) || request.resource.data.email.size() <= 100)
+        && (!('settledBy' in request.resource.data) || request.resource.data.settledBy.size() <= 60);
+      allow delete: if true;
+    }
+
     match /events/{eventId} {
       allow read: if true;
       allow write: if true;

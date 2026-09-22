@@ -1804,6 +1804,7 @@ function renderHome() {
     store.watchPayments();
     store.watchRemovals();
     store.watchLog();
+    store.watchRefunds();
   }
 
   $('#view').innerHTML = `
@@ -1848,6 +1849,8 @@ function renderHome() {
           <button class="btn btn-ghost" id="btn-players">${esc(t('playersBtn'))}</button>
           <button class="btn btn-ghost" id="btn-ledger">${esc(t('ledgerBtn'))}</button>
           <button class="btn btn-ghost" id="btn-log">${esc(t('logBtn'))}</button>
+          <button class="btn ${openRefunds().length ? 'btn-warn' : 'btn-ghost'}" id="btn-refunds">${esc(t('refundsBtn'))}${
+            openRefunds().length ? ` \u00b7 ${openRefunds().length}` : ''}</button>
           ${authReady() ? `<button class="btn btn-ghost" id="btn-execs">${esc(t('execsBtn'))}</button>` : ''}
           <button class="btn btn-ghost" id="btn-settings">${esc(t('clubSettings'))}</button>
           ${store.mode === 'demo' ? `<button class="btn btn-ghost" id="btn-reset-demo">${esc(t('resetDemo'))}</button>` : ''}
@@ -1870,6 +1873,7 @@ function renderHome() {
   $('#btn-edit-profile')?.addEventListener('click', () => openProfileModal());
   $('#btn-contact')?.addEventListener('click', () => openContactModal());
   $('#btn-log')?.addEventListener('click', openLogModal);
+  $('#btn-refunds')?.addEventListener('click', openRefundsModal);
   $('#btn-execs')?.addEventListener('click', openExecsModal);
   $('#btn-new-event')?.addEventListener('click', () => openEventEditor(null));
   $('#btn-season')?.addEventListener('click', openSeason);
@@ -2123,7 +2127,11 @@ function renderEvent(ev) {
             const sess = l ? sessionById(ev, l.sessionId) : null;
             return `<span class="chip chip-mine">${esc(SPORTS[l?.sport]?.label || '')} ${esc(l ? l.label : '?')}${sess ? ' · ' + esc(sess.label) : ''}</span>${
               isOpen ? `<button class="btn btn-tiny btn-ghost" data-switch="${esc(m.id)}">${esc(t('switchSpot'))}</button>` : ''}${
-              isOpen && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cantmake="${esc(m.id)}">${esc(t('cantMakeIt'))}</button>` : ''}`;
+              isOpen && !cancellationLocked(ev) ? `<button class="btn btn-tiny btn-ghost" data-cantmake="${esc(m.id)}">${esc(t('cantMakeIt'))}</button>` : ''}${
+              // Only where there is money to give back. Somebody who never
+              // paid wants "can't make it", not a refund form.
+              isOpen && !cancellationLocked(ev) && (m.paid || m.amountPaid)
+                ? `<button class="btn btn-tiny btn-warn" data-refund="${esc(m.id)}">${esc(t('askRefund'))}</button>` : ''}`;
           }).join('')}
           ${mine.some(m => !m.paid && !coveredSet.has(m.id)) ? `<button class="btn btn-small btn-warn" id="btn-how-pay">${esc(t('howToPay'))}</button>` : (mine.every(m => coveredSet.has(m.id)) ? passChipHtml(playerPass(DEVICE, ev.date)) : `<span class="chip chip-paid">${esc(t('allPaid'))}</span>`)}
           ${ev.date === todayStr() && isOpen ? (mine.every(m => m.checkedIn)
@@ -2158,6 +2166,30 @@ function renderEvent(ev) {
       await removeSignup(ev, su, 'self');
       toast(t('removedSelf'));
     }
+  }));
+  $$('[data-refund]').forEach(b => b.addEventListener('click', async () => {
+    const su = mySignups(ev.id).find(x => x.id === b.dataset.refund);
+    if (!su) return;
+    const l = listById(ev, su.listId);
+    const paid = personSettlement(ev, su);
+    const amount = round2(su.amountPaid || paid?.received || computePrice(ev, [su.listId], su.method, null).total);
+    if (!await confirmModal(t('askRefundConfirm', {
+      list: l?.label || '', amount: fmtMoney(amount),
+    }), t('askRefund'))) return;
+    b.disabled = true;
+    // The request is filed BEFORE the spot goes: if the removal fails we
+    // would rather have a refund nobody asked for than money nobody
+    // recorded. An exec can always dismiss one.
+    await store.addRefund({
+      id: uid('rf'),
+      eventId: ev.id, date: ev.date,
+      name: su.name, email: su.email || '',
+      listLabel: l?.label || '', sportLabel: SPORTS[l?.sport]?.label || '',
+      sessionLabel: sessionById(ev, l?.sessionId)?.label || '',
+      amount, askedAt: Date.now(), settled: false,
+    });
+    await removeSignup(ev, su, 'self');
+    toast(t('askRefundDone'));
   }));
   $$('[data-cantmake]').forEach(b => b.addEventListener('click', async () => {
     const su = mySignups(ev.id).find(x => x.id === b.dataset.cantmake);
@@ -3366,6 +3398,83 @@ async function deletePlayerAccount(player) {
  * hundred entries — long enough to answer a question about last Saturday,
  * short enough to stay readable on a phone.
  */
+/* Refund requests nobody has dealt with yet. */
+function openRefunds() {
+  return (state.refunds || []).filter(r => !r.settled)
+    .sort((a, b) => (b.askedAt || 0) - (a.askedAt || 0));
+}
+
+/*
+ * Who is owed money back.
+ *
+ * Somebody who paid and then cannot come gives up their spot and asks for
+ * their money — the spot goes to the waitlist immediately, and the club
+ * still owes them. Before this, that promise lived in whichever exec
+ * happened to read the message.
+ *
+ * Marking one settled does not move any money. It records that an exec has
+ * dealt with it, which is the whole job: the list exists so nobody is
+ * forgotten and nobody is paid twice.
+ */
+function openRefundsModal() {
+  store.watchRefunds();
+  return liveModal(ov => {
+    const open = openRefunds();
+    const done = (state.refunds || []).filter(r => r.settled)
+      .sort((a, b) => (b.settledAt || 0) - (a.settledAt || 0)).slice(0, 20);
+    const owed = open.reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
+    ov.querySelector('.modal').innerHTML = `
+      <div class="modal-body">
+        <h2 class="m0">${esc(t('refundsTitle'))}</h2>
+        <p class="hint">${esc(t('refundsHint'))}</p>
+        ${open.length ? `
+          <div class="stat-row">
+            <div class="stat"><strong>${open.length}</strong><span>${esc(t('refundsWaiting'))}</span></div>
+            <div class="stat stat-bad"><strong>${fmtMoney(owed)}</strong><span>${esc(t('refundsOwed'))}</span></div>
+          </div>
+          <div class="summary-list">
+            ${open.map(r => `
+              <div class="entry">
+                <div class="grow entry-name">
+                  <span>${esc(r.name)}</span>
+                  <small>${esc(fmtDateShort(r.date))} \u00b7 ${esc(r.sportLabel)} ${esc(r.listLabel)}${
+                    r.sessionLabel ? ' \u00b7 ' + esc(r.sessionLabel) : ''}${
+                    r.email ? ' \u00b7 ' + esc(r.email) : ''}</small>
+                </div>
+                <span class="chip chip-unpaid">${fmtMoney(r.amount || 0)}</span>
+                <button class="btn btn-small btn-success" data-settle="${esc(r.id)}">${esc(t('refundsDone'))}</button>
+              </div>`).join('')}
+          </div>` : `<p class="hint">${esc(t('refundsNone'))}</p>`}
+        ${done.length ? `
+          <h3 class="section-sub">${esc(t('refundsPaidBack', { n: done.length }))}</h3>
+          <div class="summary-list">
+            ${done.map(r => `
+              <div class="entry">
+                <div class="grow entry-name">
+                  <span>${esc(r.name)}</span>
+                  <small>${esc(fmtDateShort(r.date))} \u00b7 ${esc(t('refundsSettledBy', {
+                    name: r.settledBy || t('logByUnknown'), when: fmtStamp(r.settledAt),
+                  }))}</small>
+                </div>
+                <span class="chip chip-paid">${fmtMoney(r.amount || 0)} \u2713</span>
+              </div>`).join('')}
+          </div>` : ''}
+        <button class="btn btn-primary wide" data-close>${esc(t('close'))}</button>
+      </div>`;
+    $$('[data-close]', ov).forEach(b => b.addEventListener('click', () => ov.remove()));
+    $$('[data-settle]', ov).forEach(b => b.addEventListener('click', async () => {
+      const r = (state.refunds || []).find(x => x.id === b.dataset.settle);
+      if (!r) return;
+      if (!await confirmModal(t('refundsDoneAsk', { name: r.name, amount: fmtMoney(r.amount || 0) }), t('refundsDone'))) return;
+      await store.updateRefund(r.id, {
+        settled: true, settledAt: Date.now(), settledBy: getProfile()?.name || '',
+      });
+      logAction('refund', t('logRefund', { name: r.name, amount: fmtMoney(r.amount || 0), date: fmtDateShort(r.date) }));
+      toast(t('refundsDoneToast', { name: r.name }));
+    }));
+  }, { wide: true });
+}
+
 function openLogModal() {
   store.watchLog();
   const rows = [...(state.log || [])].sort((a, b) => (b.at || 0) - (a.at || 0));
