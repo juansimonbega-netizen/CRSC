@@ -24,11 +24,15 @@ function gsVerdict(pay, people) {
     if (set.reduce((a,p)=>a+ctx.cents(p.owed),0) === amt && amt > 0)
       return 'matched:' + set.map(p=>p.name).sort().join('+');
   }
+  // One person named and an amount that is not what they owe: record it
+  // against them rather than leaving it for an exec.
+  if (all.length === 1 && amt > 0) return 'partial:' + all[0].name;
   return 'unmatched';
 }
 function appVerdict(pay, people) {
   const r = resolvePayment(pay, people.map(p => ({ ...p, total: p.owed })));
   if (r.status === 'matched') return 'matched:' + r.people.map(p=>p.name).sort().join('+');
+  if (r.status === 'partial') return 'partial:' + r.people[0].name;
   if (r.status === 'ambiguous') return 'ambiguous';
   return 'unmatched';
 }
@@ -54,6 +58,11 @@ const cases = [
   ['zero',                  { sender:'JUAN BEGA', amount:0 }],
   ['cents exact',           { sender:'MARC TREMBLAY', amount:12.00 }],
   ['cents off by one',      { sender:'MARC TREMBLAY', amount:11.99 }],
+  // A group with an amount that does not add up: no honest way to split it,
+  // so it still waits for an exec rather than marking the wrong people paid.
+  ['group, odd amount',     { sender:'JUAN BEGA', message:'me and Marc Tremblay', amount:25 }],
+  ['overpays alone',        { sender:'LI WEI', amount:20 }],
+  ['part of what is owed',  { sender:'MARC TREMBLAY', amount:5 }],
 ];
 
 let bad = 0;

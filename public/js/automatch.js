@@ -137,5 +137,20 @@ export function resolvePayment(payment, unpaid) {
       return { status: 'matched', people, named: all.map(h => h.person) };
     }
   }
+
+  /*
+   * The amount is not what is owed, and the club would still rather have it
+   * recorded than sitting on a review list: somebody sends $10 for an $8
+   * spot, or $5 of it now. The money goes against the person and the screen
+   * works out what is left.
+   *
+   * Only when the transfer points at ONE person. With a group there is no
+   * honest way to split an amount that does not add up — is Marc's extra $9
+   * a tip, a mistake, or a third person nobody spelled right? Guessing would
+   * mark the wrong people paid, so that still goes to an exec.
+   */
+  if (all.length === 1 && amount > 0) {
+    return { status: 'partial', people: [all[0].person], named: all.map(h => h.person) };
+  }
   return { status: 'short', people: all.map(h => h.person), named: all.map(h => h.person) };
 }

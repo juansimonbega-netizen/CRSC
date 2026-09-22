@@ -190,25 +190,38 @@ function settleTransfers() {
       if (justSender && justSender.length) sets.push(justSender);
       for (var i = 0; i < sets.length; i++) {
         var owed = sets[i].reduce(function (a, p) { return a + cents(p.owed); }, 0);
-        if (owed === amount) { hits.push({ night: night, people: sets[i] }); return; }
+        if (owed === amount) { hits.push({ night: night, people: sets[i], exact: true }); return; }
       }
+      // Not what is owed, but pointing at ONE person: record the amount and
+      // let the screen work out what is left. With a group there is no
+      // honest way to split a figure that does not add up, so that waits for
+      // an exec. Mirrors resolvePayment() in public/js/automatch.js.
+      if (all.length === 1) hits.push({ night: night, people: all, exact: false });
     });
     if (hits.length !== 1) return;   // nothing certain, or certain on two nights
 
-    var night = hits[0].night, people = hits[0].people;
+    var night = hits[0].night, people = hits[0].people, exact = hits[0].exact;
     var names = people.map(function (p) { return p.name; });
     people.forEach(function (p) {
-      p.ids.forEach(function (id) {
-        patch('events/' + night.eventId + '/signups/' + id,
-          { paid: bool(true), paidAt: int(Date.now()), paidVia: str('auto-gmail'), paidEmailSentAt: int(Date.now()) },
-          ['paid', 'paidAt', 'paidVia', 'paidEmailSentAt']);
-      });
-      receipt(p, pay, night, names);
+      if (exact) {
+        p.ids.forEach(function (id) {
+          patch('events/' + night.eventId + '/signups/' + id,
+            { paid: bool(true), paidAt: int(Date.now()), paidVia: str('auto-gmail'), paidEmailSentAt: int(Date.now()) },
+            ['paid', 'paidAt', 'paidVia', 'paidEmailSentAt']);
+        });
+      } else if (p.ids.length) {
+        // The whole amount on one row; the app sums what a person paid
+        // across their spots, so it does not matter which.
+        patch('events/' + night.eventId + '/signups/' + p.ids[0],
+          { amountPaid: dbl(Number(val(pay, 'amount')) || 0), paidAt: int(Date.now()), paidVia: str('auto-gmail') },
+          ['amountPaid', 'paidAt', 'paidVia']);
+      }
+      if (exact) receipt(p, pay, night, names);
     });
     patch('payments/' + pay.name.split('/').pop(),
       { matched: bool(true), matchedTo: str(names.join(', ')), matchedEvent: str(night.eventId),
-        auto: bool(true), matchedAt: int(Date.now()) },
-      ['matched', 'matchedTo', 'matchedEvent', 'auto', 'matchedAt']);
+        auto: bool(true), matchedAt: int(Date.now()), kind: str(exact ? 'full' : 'partial') },
+      ['matched', 'matchedTo', 'matchedEvent', 'auto', 'matchedAt', 'kind']);
   });
 }
 
@@ -310,6 +323,7 @@ function patch(path, fields, mask) {
 function str(v) { return { stringValue: String(v) }; }
 function int(v) { return { integerValue: String(v) }; }
 function bool(v) { return { booleanValue: !!v }; }
+function dbl(v) { return { doubleValue: Number(v) || 0 }; }
 
 /* Firestore's typed JSON back into plain values. */
 function val(doc, field) {

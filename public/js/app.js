@@ -3752,19 +3752,34 @@ async function runAutoMatch() {
     const hits = [];
     for (const ev of events) {
       const res = resolvePayment(pay, unpaidFor(ev));
-      if (res.status === 'matched') hits.push({ ev, people: res.people });
+      if (res.status === 'matched') hits.push({ ev, people: res.people, exact: true });
+      // One person, an amount that is not what they owe: worth recording
+      // rather than leaving on a review list. See resolvePayment.
+      else if (res.status === 'partial') hits.push({ ev, people: res.people, exact: false });
     }
     if (hits.length !== 1) continue;   // nothing certain, or certain twice over
-    const { ev, people } = hits[0];
+    const { ev, people, exact } = hits[0];
     const names = people.map(p => p.name).join(', ');
-    await Promise.all(people.flatMap(p => p.signups.map(su =>
-      store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now(), paidVia: 'auto' }))));
+    if (exact) {
+      await Promise.all(people.flatMap(p => p.signups.map(su =>
+        store.updateSignup(ev.id, su.id, { paid: true, paidAt: Date.now(), paidVia: 'auto' }))));
+    } else {
+      // The whole amount on one row: a person's payments are summed across
+      // their spots, so the screen shows settled or short by the difference.
+      const su = people[0].signups?.[0];
+      if (su) {
+        await store.updateSignup(ev.id, su.id, {
+          amountPaid: round2(pay.amount || 0), paidAt: Date.now(), paidVia: 'auto',
+        });
+      }
+    }
     await store.updatePayment(pay.id, {
       matched: true, matchedTo: names, matchedEvent: ev.id,
-      auto: true, matchedAt: Date.now(),
+      auto: true, matchedAt: Date.now(), kind: exact ? 'full' : 'partial',
     });
-    await notifyPaymentReceived(ev, people, pay);
-    toast(t('autoMatchedToast', { names, amount: fmtMoney(pay.amount || 0) }));
+    if (exact) await notifyPaymentReceived(ev, people, pay);
+    toast(t(exact ? 'autoMatchedToast' : 'autoPartialToast',
+            { names, amount: fmtMoney(pay.amount || 0) }));
   }
 }
 
@@ -3940,7 +3955,8 @@ function paintSummary(ov, ev) {
       const targets = people.filter(p => names.includes(p.name));
       await Promise.all(targets.flatMap(p => p.signups
         .filter(su => su.paidVia === 'auto')
-        .map(su => store.updateSignup(ev.id, su.id, { paid: false, paidVia: '' }))));
+        .map(su => store.updateSignup(ev.id, su.id,
+          pay.kind === 'partial' ? { amountPaid: null, paidVia: '' } : { paid: false, paidVia: '' }))));
       await store.updatePayment(pay.id, { matched: false, matchedTo: '', auto: false, noAuto: true });
       toast(t('autoUndone', { names: pay.matchedTo || '' }), 'warn');
     });
