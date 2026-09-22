@@ -3122,6 +3122,11 @@ function allPlayers() {
   }
   // Removal history (the proof trail) follows the player too.
   for (const r of state.removals || []) {
+    // A removal with nobody's name on it is not a removal. The log is
+    // append-only by design, so a malformed record cannot be tidied away
+    // from in here and would otherwise sit in the directory for ever as a
+    // nameless player who was taken off a list once.
+    if (!(r.name || '').trim()) continue;
     const key = r.deviceId && r.deviceId !== 'exec-added' ? r.deviceId : 'name:' + (r.name || '').toLowerCase();
     if (!byId[key]) byId[key] = { deviceId: key, name: r.name, insta: r.insta || '', email: r.email || '', phone: r.phone || '', photo: '', games: 0, unpaid: 0 };
     byId[key].removals = (byId[key].removals || 0) + 1;

@@ -24,7 +24,11 @@ const row = (id, listId, name, email, dev, extra = {}) => ({
 });
 
 const fixture = {
-  settings: {}, removals: [], payments: [],
+  settings: {}, payments: [],
+  // An empty removal record, the kind a mis-click in the Firebase console
+  // leaves behind. The log is append-only, so it cannot be cleaned up from
+  // the app — it must not become a nameless player in the directory.
+  removals: [{ id: '_probe' }],
   players: {
     dR1: { deviceId: 'dR1', name: 'Rayan S', email: 'rayan@x.com', battlePass: '4h', level: 4,
            passLists: [{ sport: 'volleyball', sessionId: 's1', label: 'Advanced +' }] },
@@ -68,6 +72,16 @@ await pg.waitForTimeout(400);
 const rows = await pg.evaluate(() => [...document.querySelectorAll('.player-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));
 console.log('directory    :', JSON.stringify(rows));
 
+// Nobody nameless, from the malformed removal record in the fixture.
+await pg.fill('#pl-search', '');
+await pg.waitForTimeout(350);
+const everyone = await pg.evaluate(() => [...document.querySelectorAll('.player-row')]
+  .map(r => r.querySelector('.entry-name span')?.textContent.trim() ?? ''));
+const nameless = everyone.filter(n => !n || n === 'undefined');
+console.log('all rows     :', JSON.stringify(everyone), '\u00b7 nameless:', nameless.length);
+await pg.fill('#pl-search', 'rayoun');
+await pg.waitForTimeout(350);
+
 // Tap the ✕ and read what it warns about before agreeing.
 await pg.evaluate(() => document.querySelector('.player-row [data-del]')?.click());
 await pg.waitForTimeout(500);
@@ -81,7 +95,8 @@ console.log('after delete :', JSON.stringify(st));
 console.log('errors:', errs.length ? errs : 'none');
 // The exec's own profile registers itself, so check the two Rayans by name:
 // the duplicate is gone, the one they kept is untouched.
-const ok = !st.accounts.includes('rayoun@x.com') && st.accounts.includes('rayan@x.com')
+const ok = nameless.length === 0
+        && !st.accounts.includes('rayoun@x.com') && st.accounts.includes('rayan@x.com')
         && st.past === 1 && st.next === 0
         && /1 upcoming spot off/.test(ask) && !errs.length;
 console.log('\n' + (ok
