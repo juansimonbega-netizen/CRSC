@@ -123,16 +123,29 @@ function sendReminders() {
     var fresh = people.filter(function (p) { return sent.indexOf(p.email) < 0; });
     if (!fresh.length) return;
 
+    /*
+     * Claim before sending, and only send if the claim stuck.
+     *
+     * Recording it afterwards looks tidier and is a trap: if the write is
+     * refused — the rules for this collection not published yet, say —
+     * nothing is remembered, and fifteen minutes later the same people are
+     * emailed again. And again. The cost of getting this backwards is
+     * everybody who owes money being chased four times an hour until
+     * somebody notices.
+     *
+     * So the worst case here is a reminder that never arrives, rather than
+     * one that arrives thirty times.
+     */
+    var fields = {};
+    fields[stage] = strList(sent.concat(fresh.map(function (p) { return p.email; })));
+    fields.date = str(date);
+    if (!patch('reminders/' + eventId, fields, [stage, 'date'])) return;
+
     fresh.forEach(function (p) {
       try {
         reminderMail(p, date, stage, val(night, 'location') || '', cfg);
-        sent.push(p.email);
       } catch (e) { /* one bad address must not stop the rest */ }
     });
-    var fields = {};
-    fields[stage] = strList(sent);
-    fields.date = str(date);
-    patch('reminders/' + eventId, fields, [stage, 'date']);
   });
 }
 
@@ -436,12 +449,15 @@ function listDocs(collection) {
   return out;
 }
 
+/* Returns true when the write actually landed. Callers that are about to do
+ * something irreversible — send an email — have to know. */
 function patch(path, fields, mask) {
   var url = fsUrl(path) + mask.map(function (f) { return '&updateMask.fieldPaths=' + f; }).join('');
-  UrlFetchApp.fetch(url, {
+  var res = UrlFetchApp.fetch(url, {
     method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
     payload: JSON.stringify({ fields: fields }),
   });
+  return res.getResponseCode() === 200;
 }
 
 function str(v) { return { stringValue: String(v) }; }
