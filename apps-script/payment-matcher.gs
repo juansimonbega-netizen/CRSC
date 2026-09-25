@@ -75,11 +75,9 @@ function checkTransfers() {
     thread.getMessages().forEach(function (msg) {
       var subject = msg.getSubject() || '';
       var body = msg.getPlainBody() || '';
-      var sender = findSender(subject, body);
+      var sender = findSender(subject, body, msg.getFrom());
       if (!sender) return;
-      var amt = body.match(/\$\s*([\d,]+(?:[.,]\d{2})?)/);
-      var amount = amt ? parseFloat(amt[1].replace(',', '.').replace(/\.(?=.*\.)/g, '')) : 0;
-      record(msg.getId(), sender, amount, message(body), msg.getDate());
+      record(msg.getId(), sender, findAmount(subject, body), message(body), msg.getDate());
     });
   });
   // Filing the transfers is only half the job — settle the ones that are
@@ -226,8 +224,20 @@ function reminderMail(p, date, stage, location, cfg) {
  * Who sent the money. Tried against the subject first, then the body, in the
  * wordings Canadian banks actually use in English and French.
  */
-function findSender(subject, body) {
+function findSender(subject, body, from) {
   var patterns = [
+    // What the club's own inbox actually receives. Every one of these was
+    // read off a real notification, not out of Interac's documentation:
+    //   "Virement Interac : Vous avez reçu 8,00 $ de JOHNNY HOANG et ce
+    //    montant a été déposé automatiquement."
+    /Vous avez re[çc]u[^$]*\$\s*de\s+(.+?)\s+et ce montant/i,
+    /You(?:'ve| have)? received[^$]*\$?[\d.,\s]*\s*from\s+(.+?)\s+and (?:the|this)/i,
+    // The body spells it out twice more, and both are unambiguous.
+    /Envoy[ée] par\s*:\s*(.+)/i,
+    /Sent by\s*:\s*(.+)/i,
+    /au nom de\s+(.+?)\s+[àa] la\s/i,
+    /on behalf of\s+(.+?)\s+at\s/i,
+    // Interac's documented wordings, kept for banks that use them.
     /INTERAC e-Transfer:?\s*(.+?)\s+sent you/i,
     /Virement INTERAC\s*:?\s*(.+?)\s+vous a envoy/i,
     /^(.+?)\s+sent you (?:money|\$)/i,
@@ -249,7 +259,60 @@ function findSender(subject, body) {
       if (name.length >= 2 && name.length <= 60 && !/\d{3}/.test(name)) return name;
     }
   }
+  /*
+   * Last resort: the display name on the From header, which on these
+   * notifications is the payer rather than the bank —
+   * "JOHNNY HOANG <notify@payments.interac.ca>".
+   *
+   * Last, because a bank that sends as "Interac" or "RBC Alerts" would
+   * otherwise have every transfer filed under the bank's name. Anything
+   * that looks like the service rather than a person is refused.
+   */
+  var disp = String(from || '').split('<')[0].replace(/["']/g, '').trim();
+  if (disp.length >= 2 && disp.length <= 60 && !/\d{3}/.test(disp)
+      && !/interac|virement|e-?transfer|notif|alert|bank|banque|desjardins|scotia|rbc|bmo|cibc|td\b/i.test(disp)) {
+    return disp;
+  }
   return '';
+}
+
+/*
+ * How much arrived.
+ *
+ * Canadian French puts the figure before the sign and uses a comma —
+ * "8,00 $" — where English puts it after and uses a point: "$8.00". The
+ * original only knew the English shape, so every French notification the
+ * club receives was read as zero, which is why three real payments from
+ * the first Saturday were skipped without a word.
+ *
+ * The body states it plainly ("Montant : 10,00 $ (CAD)"), so that is tried
+ * first, and the subject second.
+ */
+function findAmount(subject, body) {
+  var patterns = [
+    /Montant\s*:\s*([\d\s\u00a0\u202f.,]+)\s*\$/i,   // Montant : 10,00 $
+    /Amount\s*:\s*\$\s*([\d\s,.]+)/i,                  // Amount: $10.00
+    /([\d\u00a0\u202f][\d\s\u00a0\u202f.,]*)\s*\$/,  // 8,00 $
+    /\$\s*([\d,]+(?:[.,]\d{2})?)/,                       // $8.00
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var m = body.match(patterns[i]) || subject.match(patterns[i]);
+    if (!m) continue;
+    var n = parseAmount(m[1]);
+    if (n > 0) return n;
+  }
+  return 0;
+}
+
+/* "1 234,56" and "1,234.56" are the same number written two ways. */
+function parseAmount(raw) {
+  var t = String(raw).replace(/[\s\u00a0\u202f]/g, '');
+  // Whichever separator comes last is the decimal point.
+  var lastComma = t.lastIndexOf(','), lastDot = t.lastIndexOf('.');
+  if (lastComma > lastDot) t = t.replace(/\./g, '').replace(',', '.');
+  else t = t.replace(/,/g, '');
+  var n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
 }
 
 function message(body) {
