@@ -369,7 +369,12 @@ function isEventOpen(ev) {
  */
 function cancellationLocked(ev) {
   if (!ev.date) return false;
-  const hours = parseFloat(state.settings.cancelLockHours) || 24;
+  // A deliberate 0 means "cancel right up to the whistle". `|| 24` read that
+  // as unset and locked people out a day early — invisible until the event
+  // is today, which is the only day it matters. Same trap a level of 0 fell
+  // into: fall back because the setting is missing, never because it is zero.
+  const raw = parseFloat(state.settings.cancelLockHours);
+  const hours = isFinite(raw) ? raw : 24;
   const start = new Date(ev.date + 'T17:00:00');
   return Date.now() >= start.getTime() - hours * 3600 * 1000;
 }
@@ -926,6 +931,25 @@ async function notifyPaymentReceived(ev, people, pay = null) {
       });
     } catch (err) { console.error('payment receipt', err); }
   }
+}
+
+/*
+ * The receipt for a payment an exec recorded by hand.
+ *
+ * The club settles most money in the gym — cash across the table, or a
+ * transfer an exec reads and ticks off — so the manual path is the normal
+ * one, not the exception. It has to tell the player the same as the matcher
+ * does, or a confirmation only ever reaches the handful of people whose
+ * transfer happened to match to the cent.
+ *
+ * Only once they owe nothing for the whole night: "you're all set" is a lie
+ * while a second spot is still unpaid, and notifyPaymentReceived claims
+ * paidEmailSentAt before sending, so settling the rest later cannot send a
+ * second one.
+ */
+async function notifyIfSettled(ev, su) {
+  const me = personTotals(ev).find(x => personKey(x.signups[0]) === personKey(su));
+  if (me && me.paid) await notifyPaymentReceived(ev, [me]);
 }
 
 /* A season pass is real money and a standing commitment — it gets its own
@@ -2817,6 +2841,7 @@ function paintPlayerAdmin(ov, ev, su) {
     }));
     su.paid = next;
     paintStatus();
+    if (next) await notifyIfSettled(ev, su);
   });
   // What this person still owes for the whole night, not just this one spot,
   // because that is the number the exec is holding cash against.
@@ -2843,6 +2868,7 @@ function paintPlayerAdmin(ov, ev, su) {
     toast(amount ? t('amountRecorded', { name: su.name, amount: fmtMoney(amount) }) : t('amountCleared'));
     paintOwed();
     paintStatus();
+    if (amount) await notifyIfSettled(ev, su);
   });
   $('#pa-amount-clear', ov)?.addEventListener('click', async () => {
     await store.updateSignup(ev.id, su.id, { amountPaid: null });

@@ -412,9 +412,17 @@ function settleTransfers() {
       } else if (p.ids.length) {
         // The whole amount on one row; the app sums what a person paid
         // across their spots, so it does not matter which.
-        patch('events/' + night.eventId + '/signups/' + p.ids[0],
-          { amountPaid: dbl(Number(val(pay, 'amount')) || 0), paidAt: int(Date.now()), paidVia: str('auto-gmail') },
-          ['amountPaid', 'paidAt', 'paidVia']);
+        //
+        // Somebody who rounded up — $10 on an $8 spot — owes nothing now,
+        // so they are as settled as an exact payer and hear the same thing.
+        // Claim paidEmailSentAt in the same write, or an exec opening the
+        // player afterwards would send a second receipt.
+        var covers = amount >= cents(p.owed);
+        var fields = { amountPaid: dbl(Number(val(pay, 'amount')) || 0), paidAt: int(Date.now()), paidVia: str('auto-gmail') };
+        var mask = ['amountPaid', 'paidAt', 'paidVia'];
+        if (covers) { fields.paidEmailSentAt = int(Date.now()); mask.push('paidEmailSentAt'); }
+        patch('events/' + night.eventId + '/signups/' + p.ids[0], fields, mask);
+        if (covers) receipt(p, pay, night, names);
       }
       if (exact) receipt(p, pay, night, names);
     });
